@@ -98,8 +98,6 @@ CREATE INDEX IF NOT EXISTS idx_segments_video ON segments(video_id);
 CREATE INDEX IF NOT EXISTS idx_labels_run ON label_results(run_id);
 CREATE INDEX IF NOT EXISTS idx_labels_model ON label_results(model_name);
 CREATE INDEX IF NOT EXISTS idx_labels_segment ON label_results(segment_id);
-CREATE INDEX IF NOT EXISTS idx_labels_sweep_model_variant
-    ON label_results(sweep_id, model_name, extraction_variant_id);
 """
 
 
@@ -448,6 +446,8 @@ class Storage:
         d["objects"] = json.loads(d.get("objects") or "[]")
         d["uncertainty_flags"] = json.loads(d.get("uncertainty_flags") or "[]")
         d["parsed_success"] = bool(d.get("parsed_success"))
+        if d.get("timestamp") is None:
+            d.pop("timestamp", None)
         return SegmentLabelResult(**d)
 
     # --- Runs ---
