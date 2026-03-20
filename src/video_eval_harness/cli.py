@@ -295,6 +295,7 @@ def run_benchmark(
     frames: Optional[str] = typer.Option(None, "--frames", help="Override sweep num_frames axis (e.g. 4,8,16)"),
     methods: Optional[str] = typer.Option(None, "--methods", help="Override sweep methods axis (e.g. uniform,keyframe)"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
+    ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -304,6 +305,7 @@ def run_benchmark(
     Use --sweep to run a multi-config extraction sweep.
     Use --dry-run with --sweep to preview the matrix without API calls.
     Use --model-filter to run only a subset of models from the config.
+    Use --ground-truth to evaluate against known labels.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -344,19 +346,81 @@ def run_benchmark(
     if model_filter:
         filter_models = [m.strip() for m in model_filter.split(",")]
 
+    # Load ground truth labels if provided
+    gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
+
     # Branch: sweep mode vs single-config mode
     if sweep and sweep_cfg is not None:
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            dry_run, artifacts_dir, log_level, filter_models,
+            dry_run, artifacts_dir, log_level, filter_models, gt_labels,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            num_frames, artifacts_dir, log_level, filter_models,
+            num_frames, artifacts_dir, log_level, filter_models, gt_labels,
         )
 
     cache.close()
+
+
+def _load_ground_truth(gt_path: str) -> list:
+    """Load ground truth labels from a JSON file."""
+    import json
+
+    from .schemas import GroundTruthLabel
+
+    p = Path(gt_path)
+    if not p.exists():
+        console.print(f"[red]Ground truth file not found: {gt_path}[/red]")
+        raise typer.Exit(1)
+
+    with open(p, encoding="utf-8") as f:
+        data = json.load(f)
+
+    labels = []
+    for entry in data:
+        labels.append(GroundTruthLabel(
+            video_id=entry.get("video_id", ""),
+            segment_id=entry["segment_id"],
+            start_time_s=entry.get("start_time_s", 0.0),
+            end_time_s=entry.get("end_time_s", 0.0),
+            primary_action=entry["primary_action"],
+            secondary_actions=entry.get("secondary_actions", []),
+            description=entry.get("description"),
+            source=entry.get("source"),
+        ))
+    console.print(f"Loaded [cyan]{len(labels)}[/cyan] ground truth labels from {gt_path}")
+    return labels
+
+
+def _print_ground_truth_accuracy(
+    results: list,
+    gt_labels: list,
+) -> None:
+    """Compute and print ground truth accuracy metrics."""
+    from .evaluation.metrics import compute_ground_truth_accuracy
+
+    accuracy = compute_ground_truth_accuracy(results, gt_labels)
+    if not accuracy:
+        return
+
+    gt_table = Table(title="Ground Truth Accuracy", show_lines=True)
+    gt_table.add_column("Model", style="cyan", no_wrap=True)
+    gt_table.add_column("Exact Match", justify="right")
+    gt_table.add_column("Fuzzy Match", justify="right")
+    gt_table.add_column("Mean Similarity", justify="right")
+    gt_table.add_column("Evaluated Segs", justify="right")
+
+    for model, metrics in sorted(accuracy.items()):
+        gt_table.add_row(
+            model,
+            f"{metrics['exact_match_rate']:.0%}",
+            f"{metrics['fuzzy_match_rate']:.0%}",
+            f"{metrics['mean_similarity']:.3f}",
+            str(int(metrics["evaluated_segments"])),
+        )
+    console.print(gt_table)
 
 
 def _run_single(
@@ -372,6 +436,7 @@ def _run_single(
     artifacts_dir: str,
     log_level: str,
     filter_models: Optional[list[str]] = None,
+    gt_labels: Optional[list] = None,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -529,6 +594,9 @@ def _run_single(
 
     print_run_summary(results, run_id)
 
+    if gt_labels:
+        _print_ground_truth_accuracy(results, gt_labels)
+
     # Export
     run_dir = storage.run_dir(run_id)
     export_results(results, run_dir, run_id)
@@ -548,6 +616,7 @@ def _run_sweep(
     artifacts_dir: str,
     log_level: str,
     filter_models: Optional[list[str]] = None,
+    gt_labels: Optional[list] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -698,6 +767,9 @@ def _run_sweep(
 
     print_sweep_summary(results, run_id)
 
+    if gt_labels:
+        _print_ground_truth_accuracy(results, gt_labels)
+
     run_dir = storage.run_dir(run_id)
     export_results(results, run_dir, run_id)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
@@ -795,6 +867,7 @@ def sweep(
     prompt_version: Optional[str] = typer.Option(None, "--prompt", "-p"),
     window: Optional[float] = typer.Option(None, "--window", "-w"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
+    ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -821,13 +894,124 @@ def sweep(
     sweep_cfg = SweepConfig(benchmark=bench_cfg, axis=axis)
 
     filter_list = [m.strip() for m in model_filter.split(",")] if model_filter else None
+    gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
 
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-        dry_run, artifacts_dir, log_level, filter_list,
+        dry_run, artifacts_dir, log_level, filter_list, gt_labels,
     )
 
     cache.close()
+
+
+@app.command()
+def compare(
+    run_a: str = typer.Argument(..., help="First run ID (baseline)"),
+    run_b: str = typer.Argument(..., help="Second run ID (comparison)"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Compare two runs side-by-side: parse rate, latency, confidence, agreement, cost."""
+    _setup(log_level)
+    from .evaluation.metrics import compute_agreement_matrix, compute_model_summary
+    from .storage import Storage
+
+    storage = Storage(artifacts_dir)
+    results_a = storage.get_run_results(run_a)
+    results_b = storage.get_run_results(run_b)
+
+    if not results_a:
+        console.print(f"[red]No results for run {run_a}[/red]")
+        raise typer.Exit(1)
+    if not results_b:
+        console.print(f"[red]No results for run {run_b}[/red]")
+        raise typer.Exit(1)
+
+    models_a = sorted({r.model_name for r in results_a})
+    models_b = sorted({r.model_name for r in results_b})
+    all_models = sorted(set(models_a) | set(models_b))
+
+    summaries_a = {m: compute_model_summary(results_a, m) for m in models_a}
+    summaries_b = {m: compute_model_summary(results_b, m) for m in models_b}
+
+    def _delta_str(val_a: float | None, val_b: float | None, fmt: str, invert: bool = False) -> str:
+        """Format a delta value with green/red coloring. invert=True means lower is better."""
+        if val_a is None or val_b is None:
+            return "-"
+        diff = val_b - val_a
+        if abs(diff) < 1e-9:
+            return f"{diff:{fmt}}"
+        better = diff < 0 if invert else diff > 0
+        color = "green" if better else "red"
+        sign = "+" if diff > 0 else ""
+        return f"[{color}]{sign}{diff:{fmt}}[/{color}]"
+
+    # Per-model comparison table
+    table = Table(title=f"Compare: {run_a[:12]} vs {run_b[:12]}", show_lines=True)
+    table.add_column("Model", style="cyan", no_wrap=True)
+    table.add_column("Parse %\n(delta)", justify="right")
+    table.add_column("Avg Latency\n(delta ms)", justify="right")
+    table.add_column("Avg Conf\n(delta)", justify="right")
+    table.add_column("Cost\n(delta $)", justify="right")
+
+    for m in all_models:
+        sa = summaries_a.get(m)
+        sb = summaries_b.get(m)
+        if sa is None and sb is None:
+            continue
+        parse_d = _delta_str(
+            sa.parse_success_rate if sa else None,
+            sb.parse_success_rate if sb else None,
+            ".1%",
+        )
+        lat_d = _delta_str(
+            sa.avg_latency_ms if sa else None,
+            sb.avg_latency_ms if sb else None,
+            ".0f",
+            invert=True,
+        )
+        conf_d = _delta_str(
+            sa.avg_confidence if sa else None,
+            sb.avg_confidence if sb else None,
+            ".3f",
+        )
+        cost_d = _delta_str(
+            sa.total_estimated_cost if sa else None,
+            sb.total_estimated_cost if sb else None,
+            ".4f",
+            invert=True,
+        )
+        table.add_row(m, parse_d, lat_d, conf_d, cost_d)
+
+    console.print(table)
+
+    # Agreement comparison for shared models
+    shared = sorted(set(models_a) & set(models_b))
+    if len(shared) > 1:
+        agree_a = compute_agreement_matrix(results_a)
+        agree_b = compute_agreement_matrix(results_b)
+
+        ag_table = Table(title="Agreement Delta (run_b - run_a)", show_lines=True)
+        ag_table.add_column("", style="cyan")
+        for m in shared:
+            ag_table.add_column(m[:20], justify="right")
+
+        for m1 in shared:
+            row = [m1[:20]]
+            for m2 in shared:
+                va = agree_a.get(m1, {}).get(m2, 0.0)
+                vb = agree_b.get(m1, {}).get(m2, 0.0)
+                diff = vb - va
+                if m1 == m2:
+                    row.append("-")
+                elif abs(diff) < 1e-9:
+                    row.append(f"{diff:+.1%}")
+                else:
+                    color = "green" if diff > 0 else "red"
+                    row.append(f"[{color}]{diff:+.1%}[/{color}]")
+            ag_table.add_row(*row)
+
+        console.print(ag_table)
 
 
 @app.command()

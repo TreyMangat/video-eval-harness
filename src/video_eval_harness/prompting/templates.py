@@ -74,6 +74,34 @@ Respond with ONLY a JSON object:
 }
 """
 
+ACTION_LABEL_TEMPLATE = """\
+You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment \
+({{ start_time }}s–{{ end_time }}s).
+
+Identify the single main action visible across the frames.
+
+Output rules:
+- primary_action MUST be a concise verb phrase, maximum 5 words, lowercase, no articles.
+  Good: "chopping vegetables", "walking forward", "opening door", "displaying test pattern"
+  Bad: "a person is chopping some vegetables", "the door is being opened slowly"
+- Put ALL narrative detail in the "description" field, not primary_action.
+- secondary_actions: short verb phrases only, same rules as primary_action.
+- objects: nouns only, no descriptions.
+- confidence: your honest certainty from 0.0 to 1.0.
+
+Respond with ONLY a JSON object:
+{
+  "primary_action": "verb phrase, max 5 words",
+  "secondary_actions": ["other actions if any"],
+  "description": "detailed natural language description of what is happening",
+  "objects": ["notable objects visible"],
+  "environment_context": "brief setting description",
+  "confidence": 0.85,
+  "reasoning_summary_or_notes": "brief reasoning",
+  "uncertainty_flags": ["uncertain aspects if any"]
+}
+"""
+
 STRICT_JSON_TEMPLATE = """\
 Analyze {{ num_frames }} frames from a video segment ({{ start_time }}s-{{ end_time }}s).
 Output ONLY valid JSON matching this schema exactly. No markdown, no explanation, no preamble.
@@ -85,6 +113,7 @@ Output ONLY valid JSON matching this schema exactly. No markdown, no explanation
 BUILTIN_TEMPLATES = {
     "concise": CONCISE_LABEL_TEMPLATE,
     "rich": RICH_LABEL_TEMPLATE,
+    "action_label": ACTION_LABEL_TEMPLATE,
     "strict_json": STRICT_JSON_TEMPLATE,
 }
 
