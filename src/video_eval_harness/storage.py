@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .config import get_artifacts_dir, get_settings
+from .config import get_artifacts_dir
 from .log import get_logger
 from .schemas import (
     ExtractedFrames,

@@ -1,0 +1,20 @@
+services:
+  vbench-dev:
+    image: python:3.12-slim
+    working_dir: /workspace
+    env_file:
+      - .env
+    volumes:
+      - ./:/workspace
+      - ./artifacts:/workspace/artifacts
+      - ./configs:/workspace/configs
+    stdin_open: true
+    tty: true
+    command: >
+      bash -lc "
+      apt-get update &&
+      apt-get install -y --no-install-recommends ffmpeg &&
+      rm -rf /var/lib/apt/lists/* &&
+      ./scripts/dev-setup.sh &&
+      sleep infinity
+      "

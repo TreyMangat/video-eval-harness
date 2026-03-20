@@ -1,0 +1,4 @@
+# Prompt template configuration
+# Built-in templates: concise, rich, strict_json
+
+templates: {}

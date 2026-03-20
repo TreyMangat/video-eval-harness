@@ -1,0 +1,21 @@
+name: "single-cheap-model"
+
+models:
+  - gemini-3-flash
+
+prompt_version: "concise"
+
+segmentation:
+  mode: fixed_window
+  window_size_s: 10.0
+  stride_s: null
+  min_segment_s: 2.0
+
+extraction:
+  num_frames: 4
+  method: uniform
+  image_format: jpg
+  image_quality: 85
+  max_dimension: 960
+  generate_contact_sheet: false
+  contact_sheet_cols: 4
