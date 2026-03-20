@@ -50,6 +50,61 @@ def extract_json_from_text(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
+    # Fallback: repair truncated JSON (response cut off by max_tokens)
+    # Strip everything before first { and try to close the JSON
+    first_brace = text.find("{")
+    if first_brace >= 0:
+        fragment = text[first_brace:]
+        repaired = _repair_truncated_json(fragment)
+        if repaired is not None:
+            return repaired
+
+    return None
+
+
+def _repair_truncated_json(fragment: str) -> Optional[dict]:
+    """Attempt to repair a truncated JSON object.
+
+    Closes unclosed strings, arrays, and braces so that partial
+    responses (e.g. from max_tokens cutoff) can still be parsed.
+    """
+    # Close any open string
+    in_string = False
+    escaped = False
+    for ch in fragment:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+
+    if in_string:
+        fragment += '"'
+
+    # Close unclosed brackets/braces
+    open_braces = fragment.count("{") - fragment.count("}")
+    open_brackets = fragment.count("[") - fragment.count("]")
+
+    # Trim trailing comma before closing
+    trimmed = fragment.rstrip()
+    if trimmed.endswith(","):
+        trimmed = trimmed[:-1]
+        fragment = trimmed
+
+    fragment += "]" * max(0, open_brackets)
+    fragment += "}" * max(0, open_braces)
+
+    try:
+        obj = json.loads(fragment)
+        if isinstance(obj, dict):
+            logger.debug("Repaired truncated JSON successfully")
+            return obj
+    except json.JSONDecodeError:
+        pass
+
     return None
 
 

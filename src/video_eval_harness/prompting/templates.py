@@ -106,23 +106,32 @@ CLAUDE_ACTION_LABEL_TEMPLATE = """\
 You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment \
 ({{ start_time }}s–{{ end_time }}s).
 
-Identify the single main action visible across the frames.
+Return ONLY the action verb and its direct object. Nothing else in primary_action.
+Do NOT describe what is displayed. Name the ACTION.
 
-CRITICAL output rules for primary_action:
-- MUST be a concise verb phrase, maximum 5 words, lowercase, no articles.
-- Describe the DOMINANT VISUAL, not minor animated elements.
-- If the scene shows a static display (test pattern, title card, menu screen), the primary \
-action is "displaying [what]" — NOT a description of small moving elements within it.
-- Do NOT add qualifiers, adjectives, or sub-elements. Strip to the core verb + object.
-  Good: "displaying test pattern", "chopping vegetables", "walking forward"
-  Bad: "displaying countdown timer test pattern", "counting down digits sequentially"
-- Put ALL detail (timers, counters, specific objects, motion) in "description", not primary_action.
-- secondary_actions: short verb phrases only, same rules.
-- objects: nouns only, no descriptions.
+primary_action rules:
+- Exactly: verb + object. Maximum 3 words. Lowercase.
+- Use the SAME label other annotators would pick for the dominant visual.
+- If something is being shown/displayed, say "displaying [thing]" — period.
+- NEVER add modifiers like "countdown", "timer", "scrolling", "sequential".
+  Those details go in "description", never in primary_action.
+
+Examples of CORRECT primary_action:
+  "displaying test pattern" — NOT "displaying countdown test pattern"
+  "chopping vegetables"     — NOT "chopping vegetables sequentially"
+  "walking forward"         — NOT "walking forward slowly on path"
+
+Examples of WRONG primary_action (do not output these):
+  "counting down digits sequentially" — WRONG, should be "displaying test pattern"
+  "displaying countdown timer test pattern" — WRONG, should be "displaying test pattern"
+  "scrolling horizontal color gradient" — WRONG, should be "displaying test pattern"
+
+secondary_actions: short verb phrases, same rules.
+objects: nouns only.
 
 Respond with ONLY a JSON object:
 {
-  "primary_action": "verb phrase, max 5 words",
+  "primary_action": "verb object",
   "secondary_actions": ["other actions if any"],
   "description": "detailed natural language description of what is happening",
   "objects": ["notable objects visible"],
