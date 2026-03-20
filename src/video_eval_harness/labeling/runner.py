@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-from pathlib import Path
 from typing import Optional
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
@@ -117,12 +116,129 @@ class LabelingRunner:
         all_results = self.storage.get_run_results(run_id)
         return all_results
 
+    def run_sweep(
+        self,
+        run_id: str,
+        segments: list[Segment],
+        video_paths: dict[str, "Path"],
+        sweep_config: "SweepConfig",
+        model_names: Optional[list[str]] = None,
+    ) -> list[SegmentLabelResult]:
+        """Run a sweep: outer loop over extraction variants, inner loop over models.
+
+        For each variant, frames are extracted once and then all models
+        are run against those frames.  Results are tagged with sweep
+        metadata fields.
+
+        Args:
+            run_id: Unique run identifier.
+            segments: List of segments to label.
+            video_paths: Mapping of video_id -> Path for frame extraction.
+            sweep_config: The sweep configuration with variants.
+            model_names: Optional subset of models. Defaults to sweep config.
+
+        Returns:
+            List of all label results across all variants.
+        """
+        from ..extraction import FrameExtractor
+
+        if model_names is None:
+            model_names = list(self.models.keys())
+
+        variants = sweep_config.variants
+        sid = sweep_config.sweep_id
+        total_variants = len(variants)
+
+        logger.info(
+            f"Sweep {sid}: {total_variants} variants x {len(model_names)} models "
+            f"x {len(segments)} segments = {total_variants * len(model_names) * len(segments)} tasks"
+        )
+
+        all_results: list[SegmentLabelResult] = []
+
+        for vi, variant in enumerate(variants, 1):
+            logger.info(f"  Variant {vi}/{total_variants}: {variant.label} ({variant.variant_id})")
+
+            # Extract frames for this variant
+            ext_cfg = variant.to_extraction_config()
+            extractor = FrameExtractor(ext_cfg, self.storage)
+            frames_map: dict[str, ExtractedFrames] = {}
+            for seg in segments:
+                vpath = video_paths.get(seg.video_id)
+                if vpath is not None:
+                    frames_map[seg.segment_id] = extractor.extract(seg, vpath)
+
+            # Build work items for this variant
+            work_items = []
+            for seg in segments:
+                for model_name in model_names:
+                    if self.storage.has_result(run_id, seg.segment_id, model_name, variant.variant_id):
+                        logger.debug(f"Skipping {seg.segment_id} x {model_name} x {variant.label} (exists)")
+                        continue
+                    work_items.append((seg, model_name))
+
+            if not work_items:
+                logger.info(f"  All results for {variant.label} already computed.")
+                continue
+
+            total = len(work_items)
+            variant_results: list[SegmentLabelResult] = []
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                transient=False,
+            ) as progress:
+                task = progress.add_task(f"[{variant.label}]", total=total)
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency) as pool:
+                    futures = {}
+                    for seg, model_name in work_items:
+                        frames = frames_map.get(seg.segment_id)
+                        future = pool.submit(
+                            self._label_segment,
+                            run_id, seg, frames, model_name,
+                            variant_id=variant.variant_id,
+                            extraction_label=variant.label,
+                            num_frames_used=variant.num_frames,
+                            sampling_method_used=variant.method,
+                            sweep_id=sid,
+                        )
+                        futures[future] = (seg.segment_id, model_name)
+
+                    for future in concurrent.futures.as_completed(futures):
+                        seg_id, mname = futures[future]
+                        try:
+                            result = future.result()
+                            variant_results.append(result)
+                            self.storage.save_label_result(result)
+                            status = "ok" if result.parsed_success else "parse_fail"
+                            progress.update(
+                                task, advance=1,
+                                description=f"[{variant.label}|{mname}] {seg_id}: {status}",
+                            )
+                        except Exception as e:
+                            logger.error(f"Error {seg_id} x {mname} x {variant.label}: {e}")
+                            progress.update(task, advance=1)
+
+            all_results.extend(variant_results)
+
+        # Return everything including previously stored results
+        return self.storage.get_run_results(run_id)
+
     def _label_segment(
         self,
         run_id: str,
         segment: Segment,
         frames: Optional[ExtractedFrames],
         model_name: str,
+        variant_id: str = "",
+        extraction_label: str = "",
+        num_frames_used: int = 0,
+        sampling_method_used: str = "",
+        sweep_id: str = "",
     ) -> SegmentLabelResult:
         """Label a single segment with a single model."""
         model_cfg = self.models[model_name]
@@ -136,10 +252,21 @@ class LabelingRunner:
             num_frames=num_frames,
         )
 
-        # Check cache
+        # Check cache (variant_id included for sweep runs)
         prompt_hash = self.cache.hash_content(prompt)
         input_hash = self.cache.hash_content(frames.frame_paths if frames else [])
-        cache_key = self.cache.make_key(model_cfg.model_id, prompt_hash, input_hash)
+        cache_key = self.cache.make_key(model_cfg.model_id, prompt_hash, input_hash, variant_id)
+
+        # Sweep fields to tag on every result
+        sweep_fields = {}
+        if variant_id:
+            sweep_fields = dict(
+                extraction_variant_id=variant_id,
+                extraction_label=extraction_label,
+                num_frames_used=num_frames_used,
+                sampling_method_used=sampling_method_used,
+                sweep_id=sweep_id,
+            )
 
         cached = self.cache.get(cache_key)
         if cached is not None:
@@ -155,6 +282,7 @@ class LabelingRunner:
                 provider=model_cfg.provider,
                 latency_ms=0.0,
                 prompt_version=self.prompt_version,
+                **sweep_fields,
             )
 
         # Prepare image paths
@@ -190,4 +318,5 @@ class LabelingRunner:
             estimated_cost=cost,
             prompt_version=self.prompt_version,
             error=response.error if not response.success else None,
+            **sweep_fields,
         )

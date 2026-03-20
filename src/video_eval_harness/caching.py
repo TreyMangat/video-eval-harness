@@ -25,8 +25,15 @@ class ResponseCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache = Cache(str(self.cache_dir), size_limit=2 * 1024**3)  # 2GB
 
-    def make_key(self, model: str, prompt_hash: str, input_hash: str) -> str:
-        """Create a cache key."""
+    def make_key(self, model: str, prompt_hash: str, input_hash: str, variant_id: str = "") -> str:
+        """Create a cache key.
+
+        When ``variant_id`` is non-empty (sweep runs), it becomes part of
+        the key so the same (model, prompt, frames) tuple can have
+        distinct cache entries per extraction variant.
+        """
+        if variant_id:
+            return f"{model}:{prompt_hash}:{input_hash}:{variant_id}"
         return f"{model}:{prompt_hash}:{input_hash}"
 
     def get(self, key: str) -> Optional[str]:

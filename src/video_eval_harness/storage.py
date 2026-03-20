@@ -236,9 +236,29 @@ class Storage:
                 ).fetchall()
             return [self._row_to_label_result(r) for r in rows]
 
-    def has_result(self, run_id: str, segment_id: str, model_name: str) -> bool:
-        """Check if a result already exists (for resume support)."""
+    def has_result(self, run_id: str, segment_id: str, model_name: str, variant_id: str = "") -> bool:
+        """Check if a result already exists (for resume support).
+
+        When ``variant_id`` is provided (sweep runs), it's included in the
+        lookup so different extraction variants aren't treated as duplicates.
+        Requires the ``extraction_variant_id`` column to exist in the
+        ``label_results`` table (added by the sweep schema migration).
+        Falls back to the 3-column check if the column doesn't exist yet.
+        """
         with self._conn() as conn:
+            if variant_id:
+                try:
+                    row = conn.execute(
+                        "SELECT 1 FROM label_results "
+                        "WHERE run_id = ? AND segment_id = ? AND model_name = ? AND extraction_variant_id = ?",
+                        (run_id, segment_id, model_name, variant_id),
+                    ).fetchone()
+                    return row is not None
+                except sqlite3.OperationalError:
+                    # Column doesn't exist yet — fall through to basic check.
+                    # This means sweep resume won't deduplicate across variants
+                    # until the schema migration adds the column.
+                    pass
             row = conn.execute(
                 "SELECT 1 FROM label_results WHERE run_id = ? AND segment_id = ? AND model_name = ?",
                 (run_id, segment_id, model_name),

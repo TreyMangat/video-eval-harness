@@ -79,6 +79,13 @@ class SegmentLabelResult(_NoModelNs):
     reasoning_summary_or_notes: Optional[str] = None
     uncertainty_flags: list[str] = Field(default_factory=list)
 
+    # Extraction sweep fields (optional, empty for non-sweep runs)
+    extraction_variant_id: str = ""
+    extraction_label: str = ""
+    num_frames_used: int = 0
+    sampling_method_used: str = ""
+    sweep_id: str = ""
+
     # Meta
     raw_response_text: Optional[str] = None
     parsed_success: bool = False

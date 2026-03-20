@@ -91,53 +91,48 @@ def parse_model_response(
     estimated_cost: Optional[float] = None,
     prompt_version: Optional[str] = None,
     error: Optional[str] = None,
+    **extra_fields,
 ) -> SegmentLabelResult:
-    """Parse a raw model response into a normalized SegmentLabelResult."""
+    """Parse a raw model response into a normalized SegmentLabelResult.
+
+    Extra keyword arguments (e.g. sweep fields like extraction_variant_id,
+    extraction_label, etc.) are forwarded to the SegmentLabelResult constructor.
+    """
+    common = dict(
+        run_id=run_id,
+        video_id=video_id,
+        segment_id=segment_id,
+        start_time_s=start_time_s,
+        end_time_s=end_time_s,
+        model_name=model_name,
+        provider=provider,
+        latency_ms=latency_ms,
+        estimated_cost=estimated_cost,
+        prompt_version=prompt_version,
+        **extra_fields,
+    )
+
     if error:
         return SegmentLabelResult(
-            run_id=run_id,
-            video_id=video_id,
-            segment_id=segment_id,
-            start_time_s=start_time_s,
-            end_time_s=end_time_s,
-            model_name=model_name,
-            provider=provider,
+            **common,
             raw_response_text=raw_text,
             parsed_success=False,
             parse_error=f"Provider error: {error}",
-            latency_ms=latency_ms,
-            estimated_cost=estimated_cost,
-            prompt_version=prompt_version,
         )
 
     parsed = extract_json_from_text(raw_text)
 
     if parsed is None:
         return SegmentLabelResult(
-            run_id=run_id,
-            video_id=video_id,
-            segment_id=segment_id,
-            start_time_s=start_time_s,
-            end_time_s=end_time_s,
-            model_name=model_name,
-            provider=provider,
+            **common,
             raw_response_text=raw_text,
             parsed_success=False,
             parse_error="Could not extract JSON from response",
-            latency_ms=latency_ms,
-            estimated_cost=estimated_cost,
-            prompt_version=prompt_version,
         )
 
     try:
-        result = SegmentLabelResult(
-            run_id=run_id,
-            video_id=video_id,
-            segment_id=segment_id,
-            start_time_s=start_time_s,
-            end_time_s=end_time_s,
-            model_name=model_name,
-            provider=provider,
+        return SegmentLabelResult(
+            **common,
             primary_action=parsed.get("primary_action"),
             secondary_actions=normalize_string_list(parsed.get("secondary_actions")),
             description=parsed.get("description"),
@@ -148,24 +143,11 @@ def parse_model_response(
             uncertainty_flags=normalize_string_list(parsed.get("uncertainty_flags")),
             raw_response_text=raw_text,
             parsed_success=True,
-            latency_ms=latency_ms,
-            estimated_cost=estimated_cost,
-            prompt_version=prompt_version,
         )
-        return result
     except Exception as e:
         return SegmentLabelResult(
-            run_id=run_id,
-            video_id=video_id,
-            segment_id=segment_id,
-            start_time_s=start_time_s,
-            end_time_s=end_time_s,
-            model_name=model_name,
-            provider=provider,
+            **common,
             raw_response_text=raw_text,
             parsed_success=False,
             parse_error=f"Validation error: {e}",
-            latency_ms=latency_ms,
-            estimated_cost=estimated_cost,
-            prompt_version=prompt_version,
         )

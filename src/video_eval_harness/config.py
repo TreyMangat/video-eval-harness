@@ -88,9 +88,31 @@ def load_models_config(path: str | Path) -> dict[str, ModelConfig]:
 
 
 def load_benchmark_config(path: str | Path) -> BenchmarkConfig:
-    """Load benchmark configuration from YAML."""
+    """Load benchmark configuration from YAML.
+
+    If the YAML contains an ``extraction.sweep`` block, use
+    :func:`parse_sweep_config` internally but return the underlying
+    :class:`BenchmarkConfig` for backwards compatibility.  Callers that
+    need the full sweep config should use :func:`load_sweep_config`.
+    """
     data = load_yaml(path)
+    extraction = data.get("extraction", {})
+    if "sweep" in extraction:
+        from .sweep import parse_sweep_config
+        return parse_sweep_config(data).benchmark
     return BenchmarkConfig(**data)
+
+
+def load_sweep_config(path: str | Path):
+    """Load benchmark config with sweep support.
+
+    Returns a :class:`~video_eval_harness.sweep.SweepConfig`.  If no
+    ``extraction.sweep`` block is present the single extraction config
+    is wrapped as a 1x1 axis for uniform handling.
+    """
+    from .sweep import SweepConfig, parse_sweep_config
+    data = load_yaml(path)
+    return parse_sweep_config(data)
 
 
 def load_prompts_config(path: str | Path) -> dict[str, Any]:
