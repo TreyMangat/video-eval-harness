@@ -1,91 +1,88 @@
 # Model configuration for video eval harness
-# Model IDs are OpenRouter model identifiers by default.
-# See https://openrouter.ai/models for available models.
 #
+# All models receive identical inputs (same frames, same prompt) and are
+# compared head-to-head on parse success, latency, cost, and agreement.
+# This is an apples-to-apples benchmark, not a pipeline.
+#
+# Model IDs are OpenRouter identifiers. See https://openrouter.ai/models
 # Supported providers: openrouter, openai, gemini
-# OpenRouter is recommended (one key, many models).
 
 models:
-  # === OpenRouter models (recommended - one key for all) ===
-  gpt4o:
-    model_id: "openai/gpt-4o"
+  # ── Tier 1: Frontier vision models (default benchmark set) ──
+
+  gemini-3.1-pro:
+    model_id: "google/gemini-3.1-pro-preview"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
     supports_video: false
-    notes: "GPT-4o - strong multimodal model"
+    notes: "Frontier reasoning model with multimodal support, 1M-token context"
 
-  gpt4o-mini:
-    model_id: "openai/gpt-4o-mini"
+  gpt-5.4:
+    model_id: "openai/gpt-5.4"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
     supports_video: false
-    notes: "GPT-4o-mini - faster and cheaper"
+    notes: "OpenAI latest frontier model with 1M+ context, text and image inputs"
 
-  gemini-2-flash:
-    model_id: "google/gemini-2.0-flash-001"
+  qwen3.5-vl:
+    model_id: "qwen/qwen3.5-397b-a17b"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
     supports_video: false
-    notes: "Gemini 2.0 Flash - fast multimodal"
+    notes: "Native vision-language model, hybrid MoE architecture activating 17B params"
 
-  gemini-2-pro:
-    model_id: "google/gemini-2.5-pro-preview"
+  claude-sonnet-4.6:
+    model_id: "anthropic/claude-sonnet-4.6"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
     supports_video: false
-    notes: "Gemini 2.5 Pro - strong reasoning"
+    notes: "Strong multimodal reasoning from Anthropic"
 
-  claude-sonnet:
-    model_id: "anthropic/claude-sonnet-4"
-    provider: openrouter
-    max_tokens: 2048
-    temperature: 0.1
-    supports_images: true
-    supports_video: false
-    notes: "Claude Sonnet 4 - strong vision"
+  # ── Optional: Cheaper/faster models for iteration ──
+  # Uncomment these when you want to test pipeline throughput or reduce cost
+  # during development. They're not part of the default benchmark set.
 
-  qwen-vl:
-    model_id: "qwen/qwen2.5-vl-72b-instruct"
-    provider: openrouter
-    max_tokens: 2048
-    temperature: 0.1
-    supports_images: true
-    supports_video: false
-    notes: "Qwen2.5-VL-72B - strong open multimodal model"
-
-  # === Native OpenAI models (requires OPENAI_API_KEY) ===
-  # Uncomment to use direct OpenAI API instead of OpenRouter:
-  # gpt4o-native:
-  #   model_id: "gpt-4o"
-  #   provider: openai
-  #   max_tokens: 2048
-  #   temperature: 0.1
-  #   supports_images: true
-  #   notes: "GPT-4o via native OpenAI API"
-
-  # === Native Gemini models (requires GOOGLE_API_KEY) ===
-  # Uncomment to use direct Gemini API instead of OpenRouter:
-  # gemini-native:
-  #   model_id: "gemini-2.0-flash"
-  #   provider: gemini
-  #   max_tokens: 2048
-  #   temperature: 0.1
-  #   supports_images: true
-  #   notes: "Gemini 2.0 Flash via native Google API"
-
-  # === More models via OpenRouter ===
-  # llama-vision:
-  #   model_id: "meta-llama/llama-4-scout"
+  # gemini-3-flash:
+  #   model_id: "google/gemini-3-flash-preview"
   #   provider: openrouter
   #   max_tokens: 2048
   #   temperature: 0.1
   #   supports_images: true
-  #   notes: "Llama 4 Scout"
+  #   supports_video: false
+  #   notes: "Fast Gemini variant for iteration"
+
+  # gemini-3.1-flash-lite:
+  #   model_id: "google/gemini-3.1-flash-lite-preview"
+  #   provider: openrouter
+  #   max_tokens: 2048
+  #   temperature: 0.1
+  #   supports_images: true
+  #   supports_video: false
+  #   notes: "Cheapest option for bulk runs"
+
+  # ── Native API alternatives (bypass OpenRouter) ──
+  # Uncomment to use direct API keys instead of OpenRouter:
+
+  # gpt-5.4-native:
+  #   model_id: "gpt-5.4"
+  #   provider: openai
+  #   max_tokens: 2048
+  #   temperature: 0.1
+  #   supports_images: true
+  #   notes: "GPT-5.4 via native OpenAI API"
+
+  # gemini-native:
+  #   model_id: "gemini-3.1-pro"
+  #   provider: gemini
+  #   max_tokens: 2048
+  #   temperature: 0.1
+  #   supports_images: true
+  #   notes: "Gemini 3.1 Pro via native Google API"

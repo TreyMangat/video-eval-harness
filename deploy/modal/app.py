@@ -62,41 +62,32 @@ api.add_middleware(
 )
 
 
+# Every model gets identical input and is compared head-to-head.
+# This is a benchmark, not a pipeline — no role assignments.
 DEFAULT_MODELS = {
     "gemini-3.1-pro": {
         "model_id": "google/gemini-3.1-pro-preview",
         "provider": "openrouter",
         "supports_images": True,
-        "role": "primary_labeler",
-        "notes": "Highest-quality primary segment labeler",
-    },
-    "gemini-3-flash": {
-        "model_id": "google/gemini-3-flash-preview",
-        "provider": "openrouter",
-        "supports_images": True,
-        "role": "fast_first_pass",
-        "notes": "Fast first-pass benchmark baseline",
-    },
-    "gemini-3.1-flash-lite": {
-        "model_id": "google/gemini-3.1-flash-lite-preview",
-        "provider": "openrouter",
-        "supports_images": True,
-        "role": "cheap_bulk_pass",
-        "notes": "Cheapest bulk pass when throughput matters most",
+        "notes": "Frontier reasoning model with multimodal support, 1M-token context",
     },
     "gpt-5.4": {
         "model_id": "openai/gpt-5.4",
         "provider": "openrouter",
         "supports_images": True,
-        "role": "reasoning_judge",
-        "notes": "Best judge and schema-normalizer candidate",
+        "notes": "OpenAI latest frontier model with 1M+ context, text and image inputs",
     },
-    "qwen3-vl": {
-        "model_id": "qwen/qwen3-vl-235b-a22b-instruct",
+    "qwen3.5-vl": {
+        "model_id": "qwen/qwen3.5-397b-a17b",
         "provider": "openrouter",
         "supports_images": True,
-        "role": "second_opinion",
-        "notes": "Strong multimodal second opinion with a different bias profile",
+        "notes": "Native vision-language model, hybrid MoE activating 17B params",
+    },
+    "claude-sonnet-4.6": {
+        "model_id": "anthropic/claude-sonnet-4.6",
+        "provider": "openrouter",
+        "supports_images": True,
+        "notes": "Strong multimodal reasoning from Anthropic",
     },
 }
 
@@ -106,7 +97,7 @@ class BenchmarkRequest(BaseModel):
 
     video_url: str
     video_name: str = "video.mp4"
-    models: list[str] = Field(default_factory=lambda: ["gemini-3.1-pro", "gemini-3-flash", "gpt-5.4", "qwen3-vl"])
+    models: list[str] = Field(default_factory=lambda: ["gemini-3.1-pro", "gpt-5.4", "qwen3.5-vl", "claude-sonnet-4.6"])
     segmentation_mode: str = "fixed_window"
     window_size: float = 10.0
     stride: Optional[float] = None
@@ -193,7 +184,6 @@ def process_video(request: dict[str, Any]) -> dict[str, Any]:
                 max_tokens=2048,
                 temperature=0.1,
                 supports_images=bool(model_meta.get("supports_images", True)),
-                role=str(model_meta.get("role", "labeler")),
                 notes=model_meta.get("notes"),
             )
 

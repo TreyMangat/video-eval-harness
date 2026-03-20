@@ -1,20 +1,12 @@
 import type { RunPayload, RunListItem } from "./types";
 
+// Benchmark models — all receive identical input, compared head-to-head.
 const MODELS = [
   "gemini-3.1-pro",
-  "gemini-3-flash",
   "gpt-5.4",
-  "qwen3-vl",
-  "gemini-3.1-flash-lite",
+  "qwen3.5-vl",
+  "claude-sonnet-4.6",
 ];
-
-const MODEL_ROLES: Record<string, string> = {
-  "gemini-3.1-pro": "primary_labeler",
-  "gemini-3-flash": "fast_first_pass",
-  "gemini-3.1-flash-lite": "cheap_bulk_pass",
-  "gpt-5.4": "reasoning_judge",
-  "qwen3-vl": "second_opinion",
-};
 
 const ACTIONS = [
   "person walking forward",
@@ -96,36 +88,31 @@ function generateDemoRun(
   const results = segments.flatMap((seg) =>
     models.map((model) => {
       const actionIdx = Math.floor(rand() * ACTIONS.length);
+      // Realistic latency/cost/confidence per frontier model
       const latencyBase =
-        model.includes("flash-lite")
-          ? 600
-          : model.includes("flash")
-            ? 900
-            : model.includes("pro")
-              ? 2200
-              : model.includes("gpt")
-                ? 1800
-                : 1500;
+        model.includes("pro")
+          ? 2200
+          : model.includes("gpt")
+            ? 1800
+            : model.includes("claude")
+              ? 1600
+              : 1400; // qwen
       const costBase =
-        model.includes("flash-lite")
-          ? 0.0002
-          : model.includes("flash")
-            ? 0.0005
-            : model.includes("pro")
-              ? 0.003
-              : model.includes("gpt")
-                ? 0.0025
-                : 0.0015;
+        model.includes("pro")
+          ? 0.003
+          : model.includes("gpt")
+            ? 0.0025
+            : model.includes("claude")
+              ? 0.002
+              : 0.0008; // qwen
       const confBase =
         model.includes("pro")
           ? 0.91
           : model.includes("gpt")
             ? 0.89
-            : model.includes("qwen")
-              ? 0.84
-              : model.includes("flash-lite")
-                ? 0.76
-                : 0.85;
+            : model.includes("claude")
+              ? 0.88
+              : 0.85; // qwen
 
       const parseFail = rand() < 0.03;
 
@@ -196,18 +183,7 @@ function generateDemoRun(
         confidences.length > 0
           ? confidences.reduce((a, b) => a + b, 0) / confidences.length
           : null,
-      consensus_alignment_rate:
-        successful.length > 0
-          ? Math.min(
-              1,
-              0.72 +
-                (model.includes("pro") ? 0.16 : 0) +
-                (model.includes("gpt") ? 0.12 : 0) +
-                (model.includes("qwen") ? 0.08 : 0) +
-                (model.includes("flash-lite") ? -0.06 : 0) +
-                (rand() - 0.5) * 0.08
-            )
-          : null,
+      consensus_alignment_rate: null,
     };
   }
 
@@ -247,12 +223,7 @@ function generateDemoRun(
       segmentation_config: { mode: "fixed_window", window_size_s: 10, stride_s: null },
       extraction_config: { num_frames: 8, method: "uniform" },
       model_configs: Object.fromEntries(
-        models.map((model) => [
-          model,
-          {
-            role: MODEL_ROLES[model] ?? "labeler",
-          },
-        ])
+        models.map((model) => [model, {}])
       ),
       video_ids: [videoId],
       created_at: createdAt,
@@ -283,7 +254,7 @@ export const DEMO_RUNS: RunPayload[] = [
   generateDemoRun(
     "run_a1b2c3d4e5f6",
     "2026-03-18T14:30:00Z",
-    ["gemini-3.1-pro", "gemini-3-flash", "gpt-5.4", "qwen3-vl"],
+    ["gemini-3.1-pro", "gpt-5.4", "qwen3.5-vl", "claude-sonnet-4.6"],
     "office_walkthrough.mp4",
     6,
     42
@@ -291,7 +262,7 @@ export const DEMO_RUNS: RunPayload[] = [
   generateDemoRun(
     "run_x7y8z9w0v1u2",
     "2026-03-17T09:15:00Z",
-    ["gemini-3.1-pro", "gemini-3-flash", "gemini-3.1-flash-lite", "gpt-5.4", "qwen3-vl"],
+    ["gemini-3.1-pro", "gpt-5.4", "claude-sonnet-4.6"],
     "kitchen_activity.mp4",
     8,
     137
