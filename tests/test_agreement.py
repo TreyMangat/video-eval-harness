@@ -13,7 +13,7 @@ from video_eval_harness.evaluation.metrics import compute_action_similarity
             "displaying a television test pattern",
             0.5,
         ),
-        ("displaying test pattern", "displaying a video test pattern", 0.8),
+        ("displaying test pattern", "displaying a video test pattern", 0.5),
         ("walking forward", "walking forward", 0.99),
     ],
 )

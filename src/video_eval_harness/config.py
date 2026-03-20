@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -37,6 +36,7 @@ class ModelConfig(BaseModel):
     temperature: float = 0.1
     supports_images: bool = True
     supports_video: bool = False
+    tier: str = "frontier"
     notes: Optional[str] = None
 
 
@@ -110,7 +110,7 @@ def load_sweep_config(path: str | Path):
     ``extraction.sweep`` block is present the single extraction config
     is wrapped as a 1x1 axis for uniform handling.
     """
-    from .sweep import SweepConfig, parse_sweep_config
+    from .sweep import parse_sweep_config
     data = load_yaml(path)
     return parse_sweep_config(data)
 
@@ -166,3 +166,69 @@ def setup_providers(
         providers["gemini"] = GeminiNativeProvider(api_key=settings.google_api_key)
 
     return providers
+
+
+def validate_run_config(
+    model_names: list[str],
+    models_cfg: dict[str, ModelConfig],
+    settings: Optional[AppSettings] = None,
+    sweep_axis: Optional[Any] = None,
+) -> list[str]:
+    """Pre-flight validation before any API calls.
+
+    Checks:
+        1. All model names in the benchmark exist in models.yaml.
+        2. Required API keys are set for the providers needed.
+        3. FFmpeg is callable (needed for frame extraction).
+        4. Sweep axis values are valid (if provided).
+
+    Returns a list of error messages.  Empty list means all checks passed.
+    """
+    import shutil
+
+    if settings is None:
+        settings = get_settings()
+
+    errors: list[str] = []
+
+    # 1. Model name cross-reference
+    missing = [m for m in model_names if m not in models_cfg]
+    if missing:
+        errors.append(f"Models not found in models.yaml: {', '.join(missing)}")
+
+    # 2. API keys for needed providers
+    active = {k: v for k, v in models_cfg.items() if k in model_names}
+    needed_providers = {m.provider for m in active.values()}
+
+    provider_keys = {
+        "openrouter": ("OPENROUTER_API_KEY", settings.openrouter_api_key),
+        "openai": ("OPENAI_API_KEY", settings.openai_api_key),
+        "gemini": ("GOOGLE_API_KEY", settings.google_api_key),
+    }
+    for prov in needed_providers:
+        if prov in provider_keys:
+            env_name, value = provider_keys[prov]
+            if not value:
+                errors.append(f"{env_name} not set (required for {prov} models)")
+
+    # 3. FFmpeg availability
+    ffmpeg = shutil.which(settings.ffmpeg_path)
+    if ffmpeg is None:
+        errors.append(
+            f"FFmpeg not found (looked for '{settings.ffmpeg_path}'). "
+            "Install with: winget install ffmpeg  or  scoop install ffmpeg"
+        )
+
+    # 4. Sweep axis validation
+    if sweep_axis is not None:
+        valid_methods = {"uniform", "keyframe"}
+        if hasattr(sweep_axis, "num_frames"):
+            for nf in sweep_axis.num_frames:
+                if nf < 1 or nf > 128:
+                    errors.append(f"Invalid num_frames value: {nf} (must be 1-128)")
+        if hasattr(sweep_axis, "methods"):
+            for method in sweep_axis.methods:
+                if method not in valid_methods:
+                    errors.append(f"Invalid sampling method: '{method}' (valid: {', '.join(sorted(valid_methods))})")
+
+    return errors
