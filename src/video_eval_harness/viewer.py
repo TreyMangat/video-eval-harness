@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import json
+import importlib.util
 import sys
 from pathlib import Path
 from typing import Any
@@ -99,9 +100,12 @@ def _load_frames_payload(
 
 
 def _style_rate_matrix(df: pd.DataFrame):
-    return df.style.format("{:.0%}").background_gradient(
-        cmap="RdYlGn", axis=None, vmin=0.0, vmax=1.0
-    )
+    styler = df.style.format("{:.0%}")
+    if importlib.util.find_spec("matplotlib") is not None:
+        styler = styler.background_gradient(
+            cmap="RdYlGn", axis=None, vmin=0.0, vmax=1.0
+        )
+    return styler
 
 
 def main() -> None:
@@ -207,9 +211,7 @@ def main() -> None:
         agreement = compute_agreement_matrix(results)
         agreement_df = pd.DataFrame(agreement).reindex(index=models, columns=models)
         st.dataframe(
-            agreement_df.style.format("{:.0%}").background_gradient(
-                cmap="RdYlGn", axis=None, vmin=0.0, vmax=1.0
-            ),
+            _style_rate_matrix(agreement_df),
             use_container_width=True,
         )
 
@@ -262,9 +264,7 @@ def main() -> None:
                     index=models, columns=models
                 )
                 st.dataframe(
-                    matrix_df.style.format("{:.0%}").background_gradient(
-                        cmap="RdYlGn", axis=None, vmin=0.0, vmax=1.0
-                    ),
+                    _style_rate_matrix(matrix_df),
                     use_container_width=True,
                 )
 

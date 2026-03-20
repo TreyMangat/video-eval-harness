@@ -25,7 +25,7 @@ docker-build:
 	docker build -t vbench .
 
 viewer:
-	streamlit run src/video_eval_harness/viewer.py
+	streamlit run src/video_eval_harness/viewer.py --server.headless true --browser.gatherUsageStats false
 
 docker-run:
 	docker run --rm -v "$(CURDIR)/configs:/app/configs" -v "$(CURDIR)/artifacts:/app/artifacts" -v "$(CURDIR)/test_videos:/app/test_videos" --env-file .env vbench run-benchmark /app/test_videos/test_25s.mp4 --config /app/configs/benchmark_fast.yaml
