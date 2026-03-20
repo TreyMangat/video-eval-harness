@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import sys
 
@@ -12,6 +12,12 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+
+if TYPE_CHECKING:
+    from .caching import ResponseCache
+    from .config import AppSettings, BenchmarkConfig
+    from .storage import Storage
+    from .sweep import SweepConfig, SweepOrchestrator
 
 app = typer.Typer(
     name="vbench",
@@ -284,41 +290,111 @@ def run_benchmark(
     prompt_version: Optional[str] = typer.Option(None, "--prompt", "-p", help="Override prompt from config"),
     window: Optional[float] = typer.Option(None, "--window", "-w", help="Override window size from config"),
     num_frames: Optional[int] = typer.Option(None, "--num-frames", "-n", help="Override num frames from config"),
+    sweep: bool = typer.Option(False, "--sweep", help="Enable extraction sweep from config"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show sweep plan and cost estimate without running"),
+    frames: Optional[str] = typer.Option(None, "--frames", help="Override sweep num_frames axis (e.g. 4,8,16)"),
+    methods: Optional[str] = typer.Option(None, "--methods", help="Override sweep methods axis (e.g. uniform,keyframe)"),
+    model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
     """Full pipeline: ingest -> segment -> extract -> label -> summarize.
 
     Settings are read from benchmark.yaml, with CLI flags as overrides.
+    Use --sweep to run a multi-config extraction sweep.
+    Use --dry-run with --sweep to preview the matrix without API calls.
+    Use --model-filter to run only a subset of models from the config.
     """
     _setup(log_level)
-    from .caching import ResponseCache
-    from .config import (
-        ExtractionConfig,
-        SegmentationConfig,
-        get_settings,
-        load_benchmark_config,
-        load_models_config,
-        setup_providers,
-    )
+    from .caching import ResponseCache as _RC
+    from .config import get_settings, load_benchmark_config, load_models_config, load_sweep_config
+    from .storage import Storage as _ST
+    from .sweep import SweepAxis
+    from .sweep import SweepConfig as _SC
+
+    settings = get_settings()
+    storage = _ST(artifacts_dir)
+    cache = _RC()
+
+    # Load config — sweep-aware or standard
+    bench_cfg = None
+    sweep_cfg = None
+    if sweep:
+        sweep_cfg = load_sweep_config(config_file)
+    else:
+        bench_cfg = load_benchmark_config(config_file)
+
+    models_cfg = load_models_config(models_file)
+
+    # CLI overrides for sweep axes
+    if frames is not None or methods is not None:
+        frames_list = [int(x.strip()) for x in frames.split(",")] if frames else [8]
+        methods_list = [x.strip() for x in methods.split(",")] if methods else ["uniform"]
+        cli_axis = SweepAxis(num_frames=frames_list, methods=methods_list)
+        if sweep_cfg is not None:
+            sweep_cfg.axis = cli_axis
+        else:
+            # --frames/--methods without --sweep implies sweep mode
+            bench_cfg_for_sweep = load_benchmark_config(config_file)
+            sweep_cfg = _SC(benchmark=bench_cfg_for_sweep, axis=cli_axis)
+        sweep = True
+
+    # Parse model filter
+    filter_models = None
+    if model_filter:
+        filter_models = [m.strip() for m in model_filter.split(",")]
+
+    # Branch: sweep mode vs single-config mode
+    if sweep and sweep_cfg is not None:
+        _run_sweep(
+            sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
+            dry_run, artifacts_dir, log_level, filter_models,
+        )
+    else:
+        _run_single(
+            bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
+            num_frames, artifacts_dir, log_level, filter_models,
+        )
+
+    cache.close()
+
+
+def _run_single(
+    bench_cfg: "BenchmarkConfig",
+    models_cfg: dict,
+    path: str,
+    settings: "AppSettings",
+    storage: "Storage",
+    cache: "ResponseCache",
+    prompt_version: Optional[str],
+    window: Optional[float],
+    num_frames: Optional[int],
+    artifacts_dir: str,
+    log_level: str,
+    filter_models: Optional[list[str]] = None,
+) -> None:
+    """Standard single-config benchmark run."""
+    from .config import setup_providers, validate_run_config
     from .extraction import FrameExtractor
     from .labeling import LabelingRunner
     from .log import get_logger
     from .prompting import PromptBuilder
     from .schemas import RunConfig, VideoMetadata
     from .segmentation import FixedWindowSegmenter
-    from .storage import Storage
     from .utils.ffmpeg import probe_video
     from .utils.ids import generate_run_id, generate_video_id
 
     logger = get_logger(__name__)
-    settings = get_settings()
-    storage = Storage(artifacts_dir)
-    cache = ResponseCache()
 
-    # Load benchmark config first, then apply CLI overrides
-    bench_cfg = load_benchmark_config(config_file)
-    models_cfg = load_models_config(models_file)
+    # Pre-flight validation
+    model_names_check = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+    if filter_models:
+        model_names_check = [m for m in model_names_check if m in filter_models]
+    errors = validate_run_config(model_names_check, models_cfg, settings)
+    if errors:
+        for err in errors:
+            console.print(f"[red]  {err}[/red]")
+        raise typer.Exit(1)
 
     # Segmentation: config-file values with CLI overrides
     seg_cfg = bench_cfg.segmentation
@@ -404,6 +480,8 @@ def run_benchmark(
     # 4. Label
     console.rule("[bold]Step 4: Label with Models[/bold]")
     model_names = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+    if filter_models:
+        model_names = [m for m in model_names if m in filter_models]
     active_models = {k: v for k, v in models_cfg.items() if k in model_names}
 
     if not active_models:
@@ -456,7 +534,220 @@ def run_benchmark(
     export_results(results, run_dir, run_id)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
-    cache.close()
+
+def _run_sweep(
+    sweep_cfg: "SweepConfig",
+    models_cfg: dict,
+    path: str,
+    settings: "AppSettings",
+    storage: "Storage",
+    cache: "ResponseCache",
+    prompt_version: Optional[str],
+    window: Optional[float],
+    dry_run: bool,
+    artifacts_dir: str,
+    log_level: str,
+    filter_models: Optional[list[str]] = None,
+) -> None:
+    """Sweep-mode benchmark run: iterate extraction variants x models."""
+    from .config import setup_providers, validate_run_config
+    from .labeling import LabelingRunner
+    from .prompting import PromptBuilder
+    from .schemas import RunConfig, VideoMetadata
+    from .segmentation import FixedWindowSegmenter
+    from .sweep import SweepOrchestrator
+    from .utils.ffmpeg import probe_video
+    from .utils.ids import generate_run_id, generate_video_id
+
+    bench_cfg = sweep_cfg.benchmark
+
+    # Pre-flight validation
+    model_names_check = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+    if filter_models:
+        model_names_check = [m for m in model_names_check if m in filter_models]
+    errors = validate_run_config(
+        model_names_check, models_cfg, settings,
+        sweep_axis=sweep_cfg.axis if hasattr(sweep_cfg, "axis") else None,
+    )
+    if errors:
+        for err in errors:
+            console.print(f"[red]  {err}[/red]")
+        raise typer.Exit(1)
+    effective_prompt = prompt_version or bench_cfg.prompt_version or "concise"
+
+    # Segmentation override
+    seg_cfg = bench_cfg.segmentation
+    if window is not None:
+        seg_cfg.window_size_s = window
+
+    # Resolve models
+    model_names = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+    if filter_models:
+        model_names = [m for m in model_names if m in filter_models]
+    active_models = {k: v for k, v in models_cfg.items() if k in model_names}
+
+    if not active_models:
+        console.print("[red]No models configured (check --model-filter).[/red]")
+        raise typer.Exit(1)
+
+    # 1. Ingest
+    console.rule("[bold]Step 1: Ingest[/bold]")
+    from .adapters import DirectoryAdapter, LocalFileAdapter
+
+    p = Path(path)
+    if p.is_dir():
+        adapter = DirectoryAdapter(p)
+    else:
+        adapter = LocalFileAdapter([p])
+
+    entries = adapter.list_videos()
+    if not entries:
+        console.print("[red]No video files found.[/red]")
+        raise typer.Exit(1)
+
+    videos = []
+    for entry in entries:
+        try:
+            info = probe_video(entry.path)
+            vid = generate_video_id(entry.path)
+            meta = VideoMetadata(
+                video_id=vid,
+                source_path=str(entry.path.resolve()),
+                filename=entry.path.name,
+                duration_s=info.duration_s,
+                width=info.width,
+                height=info.height,
+                fps=info.fps,
+                codec=info.codec,
+                file_size_bytes=info.file_size_bytes,
+            )
+            storage.save_video(meta)
+            videos.append(meta)
+            console.print(f"  [green]OK[/green] {entry.path.name} ({info.duration_s:.1f}s)")
+        except Exception as e:
+            console.print(f"  [red]FAIL[/red] {entry.path.name}: {e}")
+
+    if not videos:
+        console.print("[red]No videos ingested successfully.[/red]")
+        raise typer.Exit(1)
+
+    # 2. Segment
+    console.rule("[bold]Step 2: Segment[/bold]")
+    segmenter = FixedWindowSegmenter(seg_cfg)
+
+    all_segments = []
+    for v in videos:
+        segs = segmenter.segment(v)
+        storage.save_segments(segs)
+        all_segments.extend(segs)
+        console.print(f"  {v.video_id}: {len(segs)} segments")
+
+    # Sweep plan preview
+    orchestrator = SweepOrchestrator(sweep_cfg)
+    estimate = orchestrator.estimate_api_calls(len(all_segments))
+
+    _print_sweep_plan(sweep_cfg, orchestrator, estimate)
+
+    if dry_run:
+        console.print("\n[yellow]Dry run — no API calls made.[/yellow]")
+        return
+
+    # 3. Setup providers
+    try:
+        providers = setup_providers(active_models, settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    # 4. Create run
+    run_id = generate_run_id()
+    run_config = RunConfig(
+        run_id=run_id,
+        models=model_names,
+        prompt_version=effective_prompt,
+        segmentation_config=seg_cfg.model_dump(),
+        extraction_config=bench_cfg.extraction.model_dump(),
+        video_ids=[v.video_id for v in videos],
+        notes=f"sweep:{sweep_cfg.sweep_id}",
+    )
+    storage.save_run(run_config)
+
+    console.rule("[bold]Step 3: Sweep — Extract & Label[/bold]")
+    console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
+    console.print(f"  Sweep ID: [cyan]{sweep_cfg.sweep_id}[/cyan]")
+
+    # Build video_paths map for runner.run_sweep
+    video_paths = {v.video_id: Path(v.source_path) for v in videos}
+
+    prompt_builder = PromptBuilder()
+    runner = LabelingRunner(
+        providers=providers,
+        models=active_models,
+        prompt_builder=prompt_builder,
+        storage=storage,
+        cache=cache,
+        prompt_version=effective_prompt,
+        max_concurrency=settings.vbench_max_concurrency,
+    )
+
+    results = runner.run_sweep(run_id, all_segments, video_paths, sweep_cfg, model_names)
+
+    # 5. Summarize
+    console.rule("[bold]Step 4: Sweep Summary[/bold]")
+    from .evaluation.summaries import print_sweep_summary, export_results
+
+    print_sweep_summary(results, run_id)
+
+    run_dir = storage.run_dir(run_id)
+    export_results(results, run_dir, run_id)
+    console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
+
+
+def _print_sweep_plan(
+    sweep_cfg: "SweepConfig",
+    orchestrator: "SweepOrchestrator",
+    estimate: dict,
+) -> None:
+    """Print a Rich table showing the sweep matrix and cost estimate."""
+    console.rule("[bold]Sweep Plan[/bold]")
+
+    # Variant table
+    vtable = Table(title="Extraction Variants", show_lines=True)
+    vtable.add_column("Variant ID", style="cyan")
+    vtable.add_column("Label")
+    vtable.add_column("Frames", justify="right")
+    vtable.add_column("Method")
+
+    for vinfo in estimate["variants"]:
+        vtable.add_row(
+            vinfo["variant_id"],
+            vinfo["label"],
+            str(vinfo["num_frames"]),
+            vinfo["method"],
+        )
+    console.print(vtable)
+
+    # Matrix table: models x variants
+    models = estimate["models"]
+    variants = sweep_cfg.variants
+
+    mtable = Table(title="Model x Variant Matrix", show_lines=True)
+    mtable.add_column("Model", style="cyan")
+    for v in variants:
+        mtable.add_column(v.label, justify="center")
+
+    for model in models:
+        row = [model]
+        for v in variants:
+            row.append("[green]\u2713[/green]")
+        mtable.add_row(*row)
+    console.print(mtable)
+
+    # Summary
+    console.print(f"\n  Segments: [cyan]{estimate['num_segments']}[/cyan]")
+    console.print(f"  Models: [cyan]{estimate['num_models']}[/cyan]")
+    console.print(f"  Variants: [cyan]{estimate['num_variants']}[/cyan]")
+    console.print(f"  Total API calls: [bold yellow]{estimate['total_calls']}[/bold yellow]")
 
 
 @app.command()
@@ -464,11 +755,12 @@ def evaluate(
     run_id: str = typer.Argument(..., help="Run ID to evaluate"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     export: bool = typer.Option(True, "--export/--no-export"),
+    group_by: Optional[str] = typer.Option(None, "--group-by", "-g", help="Group results by 'variant' for sweep runs"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
     """Evaluate and summarize results from a previous run."""
     _setup(log_level)
-    from .evaluation.summaries import export_results, print_run_summary
+    from .evaluation.summaries import export_results, print_run_summary, print_sweep_summary
     from .storage import Storage
 
     storage = Storage(artifacts_dir)
@@ -478,13 +770,64 @@ def evaluate(
         console.print(f"[yellow]No results found for run {run_id}[/yellow]")
         raise typer.Exit(1)
 
-    print_run_summary(results, run_id)
+    # Detect sweep results or use --group-by variant
+    has_sweep_data = any(r.extraction_variant_id for r in results)
+    if group_by == "variant" or has_sweep_data:
+        print_sweep_summary(results, run_id)
+    else:
+        print_run_summary(results, run_id)
 
     if export:
         run_dir = storage.run_dir(run_id)
         paths = export_results(results, run_dir, run_id)
         for p in paths:
             console.print(f"  Exported: [cyan]{p}[/cyan]")
+
+
+@app.command()
+def sweep(
+    path: str = typer.Argument(..., help="Video file or directory"),
+    config_file: str = typer.Option(str(DEFAULT_CONFIGS / "benchmark.yaml"), "--config", "-c"),
+    models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
+    frames: str = typer.Option("4,8,16", "--frames", help="Comma-separated frame counts"),
+    methods: str = typer.Option("uniform,keyframe", "--methods", help="Comma-separated sampling methods"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show plan without running"),
+    prompt_version: Optional[str] = typer.Option(None, "--prompt", "-p"),
+    window: Optional[float] = typer.Option(None, "--window", "-w"),
+    model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Run an extraction sweep: benchmark across frame counts and sampling methods.
+
+    Equivalent to 'run-benchmark --sweep --frames 4,8,16 --methods uniform,keyframe'.
+    Use --model-filter to run only a subset of models.
+    """
+    _setup(log_level)
+    from .caching import ResponseCache
+    from .config import load_benchmark_config, load_models_config, get_settings
+    from .storage import Storage
+    from .sweep import SweepAxis, SweepConfig
+
+    settings = get_settings()
+    storage = Storage(artifacts_dir)
+    cache = ResponseCache()
+    models_cfg = load_models_config(models_file)
+
+    bench_cfg = load_benchmark_config(config_file)
+    frames_list = [int(x.strip()) for x in frames.split(",")]
+    methods_list = [x.strip() for x in methods.split(",")]
+    axis = SweepAxis(num_frames=frames_list, methods=methods_list)
+    sweep_cfg = SweepConfig(benchmark=bench_cfg, axis=axis)
+
+    filter_list = [m.strip() for m in model_filter.split(",")] if model_filter else None
+
+    _run_sweep(
+        sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
+        dry_run, artifacts_dir, log_level, filter_list,
+    )
+
+    cache.close()
 
 
 @app.command()

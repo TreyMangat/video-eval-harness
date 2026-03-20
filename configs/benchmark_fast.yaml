@@ -1,7 +1,8 @@
-name: "single-cheap-model"
-
+name: "fast"
 models:
   - gemini-3-flash
+  - gpt-4.1-nano
+  - qwen3.5-27b
 
 prompt_version: "action_label"
 

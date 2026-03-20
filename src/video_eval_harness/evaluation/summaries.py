@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
 from ..log import get_logger
-from ..schemas import ModelRunSummary, SegmentLabelResult
-from .metrics import compute_agreement_matrix, compute_model_summary
+from ..schemas import SegmentLabelResult
+from .metrics import compute_agreement_matrix, compute_model_summary, compute_sweep_metrics
 
 logger = get_logger(__name__)
 console = Console()
@@ -104,8 +103,110 @@ def _print_sample_outputs(results: list[SegmentLabelResult], models: list[str], 
         console.print(table)
 
 
+def print_sweep_summary(results: list[SegmentLabelResult], run_id: str) -> None:
+    """Print a sweep-grouped Rich summary: model x variant matrix with metrics."""
+    sweep_data = compute_sweep_metrics(results)
+    cells = sweep_data["cells"]
+    stability = sweep_data["stability"]
+    agreement_by_variant = sweep_data["agreement_by_variant"]
+
+    if not cells:
+        console.print("[yellow]No sweep results to summarize.[/yellow]")
+        return
+
+    # Collect unique models and variants (preserving order)
+    models = sorted({c.model_name for c in cells})
+    variants = sorted({c.variant_label for c in cells})
+
+    # Cell lookup
+    cell_map = {(c.model_name, c.variant_label): c for c in cells}
+
+    # Parse success rate matrix
+    ptable = Table(title=f"Parse Success Rate — Run {run_id}", show_lines=True)
+    ptable.add_column("Model", style="cyan", no_wrap=True)
+    for v in variants:
+        ptable.add_column(v, justify="right")
+
+    for model in models:
+        row = [model]
+        for v in variants:
+            c = cell_map.get((model, v))
+            if c:
+                rate = f"{c.parse_success_rate:.0%}"
+                row.append(f"[green]{rate}[/green]" if c.parse_success_rate >= 0.9 else rate)
+            else:
+                row.append("-")
+        ptable.add_row(*row)
+    console.print(ptable)
+
+    # Latency matrix
+    ltable = Table(title="Avg Latency (ms)", show_lines=True)
+    ltable.add_column("Model", style="cyan", no_wrap=True)
+    for v in variants:
+        ltable.add_column(v, justify="right")
+
+    for model in models:
+        row = [model]
+        for v in variants:
+            c = cell_map.get((model, v))
+            row.append(f"{c.avg_latency_ms:.0f}" if c and c.avg_latency_ms else "-")
+        ltable.add_row(*row)
+    console.print(ltable)
+
+    # Confidence matrix
+    ctable = Table(title="Avg Confidence", show_lines=True)
+    ctable.add_column("Model", style="cyan", no_wrap=True)
+    for v in variants:
+        ctable.add_column(v, justify="right")
+
+    for model in models:
+        row = [model]
+        for v in variants:
+            c = cell_map.get((model, v))
+            row.append(f"{c.avg_confidence:.2f}" if c and c.avg_confidence else "-")
+        ctable.add_row(*row)
+    console.print(ctable)
+
+    # Stability scores
+    stable = Table(title="Model Stability Across Variants", show_lines=True)
+    stable.add_column("Model", style="cyan", no_wrap=True)
+    stable.add_column("Self-Agreement", justify="right")
+    stable.add_column("Rank Stability", justify="right")
+    stable.add_column("Rank Positions", justify="left")
+
+    for s in stability:
+        stable.add_row(
+            s.model_name,
+            f"{s.self_agreement:.0%}",
+            f"{s.rank_stability:.2f}",
+            ", ".join(f"#{r}" for r in s.rank_positions),
+        )
+    console.print(stable)
+
+    # Per-variant agreement matrices
+    for vlabel, agreement in agreement_by_variant.items():
+        ag_models = sorted(agreement.keys())
+        if len(ag_models) < 2:
+            continue
+        ag_table = Table(title=f"Agreement: {vlabel}", show_lines=True)
+        ag_table.add_column("", style="cyan")
+        for m in ag_models:
+            ag_table.add_column(m[:20], justify="right")
+        for m1 in ag_models:
+            row = [m1[:20]]
+            for m2 in ag_models:
+                val = agreement.get(m1, {}).get(m2, 0)
+                row.append(f"{val:.0%}")
+            ag_table.add_row(*row)
+        console.print(ag_table)
+
+
 def results_to_dataframe(results: list[SegmentLabelResult]) -> pd.DataFrame:
-    """Convert results to a pandas DataFrame."""
+    """Convert results to a pandas DataFrame.
+
+    Sweep columns (extraction_label, num_frames_used, sampling_method_used)
+    are always included — they're empty strings / 0 for non-sweep runs.
+    """
     records = []
     for r in results:
         d = r.model_dump()

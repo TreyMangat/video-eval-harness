@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -11,6 +12,43 @@ from ..log import get_logger
 from ..schemas import GroundTruthLabel, ModelRunSummary, SegmentLabelResult
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Sweep-aware metric containers
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CellMetrics:
+    """Metrics for a single (model x extraction_variant) cell in the sweep matrix."""
+
+    model_name: str
+    variant_label: str
+    variant_id: str
+    total_segments: int = 0
+    successful_parses: int = 0
+    parse_success_rate: float = 0.0
+    avg_latency_ms: Optional[float] = None
+    median_latency_ms: Optional[float] = None
+    p95_latency_ms: Optional[float] = None
+    avg_confidence: Optional[float] = None
+    total_estimated_cost: Optional[float] = None
+
+
+@dataclass
+class ModelStabilityScore:
+    """How stable a model's outputs are across extraction variants.
+
+    self_agreement: fraction of (segment, variant_a, variant_b) triples where
+    the model's primary_action matches across the two variants.
+    rank_stability: 1.0 means the model keeps the same rank (by parse rate)
+    across all variants; 0.0 means it swaps constantly.
+    """
+
+    model_name: str
+    self_agreement: float = 0.0
+    rank_positions: list[int] = field(default_factory=list)
+    rank_stability: float = 0.0
 
 
 def compute_model_summary(results: list[SegmentLabelResult], model_name: str) -> ModelRunSummary:
@@ -44,10 +82,20 @@ def compute_model_summary(results: list[SegmentLabelResult], model_name: str) ->
 
 def compute_agreement_matrix(
     results: list[SegmentLabelResult],
+    threshold: float = 0.5,
 ) -> dict[str, dict[str, float]]:
     """Compute pairwise primary_action agreement between models.
 
-    Returns a dict of {model_a: {model_b: agreement_rate}}.
+    Uses :func:`compute_action_similarity` for fuzzy matching.
+    The returned value per pair is the mean similarity score across
+    all segments where both models produced a result.
+
+    Args:
+        results: Label results to compare.
+        threshold: Not used for scoring (kept for API compat). The matrix
+            now reports continuous similarity rather than binary agreement.
+
+    Returns a dict of {model_a: {model_b: mean_similarity}}.
     """
     # Group by segment
     by_segment: dict[str, dict[str, str]] = defaultdict(dict)
@@ -64,14 +112,13 @@ def compute_agreement_matrix(
             if m1 == m2:
                 agreement[m1][m2] = 1.0
                 continue
-            matches = 0
+            sim_sum = 0.0
             total = 0
             for seg_labels in by_segment.values():
                 if m1 in seg_labels and m2 in seg_labels:
                     total += 1
-                    if _normalized_match(seg_labels[m1], seg_labels[m2]):
-                        matches += 1
-            agreement[m1][m2] = matches / total if total > 0 else 0.0
+                    sim_sum += compute_action_similarity(seg_labels[m1], seg_labels[m2])
+            agreement[m1][m2] = sim_sum / total if total > 0 else 0.0
 
     return agreement
 
@@ -91,7 +138,8 @@ def compute_ground_truth_accuracy(
     for model in models:
         model_results = [r for r in results if r.model_name == model and r.parsed_success]
         exact_match = 0
-        normalized_match = 0
+        fuzzy_match = 0
+        sim_sum = 0.0
         total = 0
 
         for r in model_results:
@@ -102,31 +150,101 @@ def compute_ground_truth_accuracy(
             pred = (r.primary_action or "").lower().strip()
             truth = gt.primary_action.lower().strip()
 
+            sim = compute_action_similarity(pred, truth)
+            sim_sum += sim
             if pred == truth:
                 exact_match += 1
-            if _normalized_match(pred, truth):
-                normalized_match += 1
+            if sim >= 0.5:
+                fuzzy_match += 1
 
         metrics[model] = {
             "exact_match_rate": exact_match / total if total > 0 else 0.0,
-            "normalized_match_rate": normalized_match / total if total > 0 else 0.0,
+            "fuzzy_match_rate": fuzzy_match / total if total > 0 else 0.0,
+            "mean_similarity": sim_sum / total if total > 0 else 0.0,
             "evaluated_segments": total,
         }
 
     return metrics
 
 
-def _normalized_match(a: str, b: str) -> bool:
-    """Check if two action strings match after normalization."""
-    a = _normalize_action(a)
-    b = _normalize_action(b)
-    if a == b:
-        return True
-    # Check substring containment for near-matches
-    if len(a) > 3 and len(b) > 3:
-        if a in b or b in a:
-            return True
-    return False
+def compute_action_similarity(a: str, b: str) -> float:
+    """Compute similarity between two action strings using tiered matching.
+
+    Returns a float 0.0–1.0:
+        Tier 1 (exact):  normalized strings identical → 1.0
+        Tier 2 (overlap): word-set Jaccard > 0.5 → Jaccard score
+        Tier 3 (root):   head-noun overlap after stripping modifiers → 0.8
+        Otherwise → 0.0
+    """
+    na = _normalize_action(a)
+    nb = _normalize_action(b)
+
+    # Tier 1: exact match
+    if na == nb:
+        return 1.0
+
+    # Substring containment (legacy, still useful)
+    if len(na) > 3 and len(nb) > 3 and (na in nb or nb in na):
+        return 0.9
+
+    # Tokenize
+    words_a = set(na.split())
+    words_b = set(nb.split())
+
+    if not words_a or not words_b:
+        return 0.0
+
+    # Tier 2: Jaccard similarity on word sets
+    intersection = words_a & words_b
+    union = words_a | words_b
+    jaccard = len(intersection) / len(union) if union else 0.0
+    if jaccard > 0.5:
+        return jaccard
+
+    # Tier 3: extract head noun phrase (verb + nouns) and compare
+    root_a = _extract_root_phrase(na)
+    root_b = _extract_root_phrase(nb)
+    if root_a and root_b and root_a == root_b:
+        return 0.8
+
+    # Root phrase Jaccard as fallback
+    root_words_a = set(root_a.split()) if root_a else set()
+    root_words_b = set(root_b.split()) if root_b else set()
+    if root_words_a and root_words_b:
+        root_intersection = root_words_a & root_words_b
+        root_union = root_words_a | root_words_b
+        root_jaccard = len(root_intersection) / len(root_union) if root_union else 0.0
+        if root_jaccard > 0.5:
+            return root_jaccard * 0.8  # Discount slightly vs full-word match
+
+    return 0.0
+
+
+# Words that are modifiers/articles — stripped when extracting root phrases
+_STOP_WORDS = frozenset({
+    "a", "an", "the", "this", "that", "some", "very", "more",
+    "is", "are", "was", "were", "be", "been", "being",
+    "with", "from", "into", "onto", "upon", "over", "under",
+    "in", "on", "at", "to", "of", "for", "by", "about",
+    "and", "or", "but", "also", "still", "just", "only",
+    "its", "their", "his", "her",
+})
+
+
+def _extract_root_phrase(s: str) -> str:
+    """Extract the core action phrase by removing modifiers and articles.
+
+    'displaying a video test pattern' → 'displaying test pattern'
+    'showing colorful television test bars' → 'showing television test bars'
+    """
+    words = s.split()
+    root = [w for w in words if w not in _STOP_WORDS]
+    return " ".join(root)
+
+
+def _normalized_match(a: str, b: str, threshold: float = 0.5) -> bool:
+    """Check if two action strings match using similarity threshold."""
+    return compute_action_similarity(a, b) >= threshold
 
 
 def compute_verbosity_stats(
@@ -188,19 +306,6 @@ def compute_failure_analysis(
     return failures
 
 
-def _normalized_match(a: str, b: str) -> bool:
-    """Check if two action strings match after normalization."""
-    a = _normalize_action(a)
-    b = _normalize_action(b)
-    if a == b:
-        return True
-    # Check substring containment for near-matches
-    if len(a) > 3 and len(b) > 3:
-        if a in b or b in a:
-            return True
-    return False
-
-
 def _normalize_action(s: str) -> str:
     """Normalize an action string for comparison."""
     s = s.lower().strip()
@@ -211,3 +316,125 @@ def _normalize_action(s: str) -> str:
     # Strip articles and common filler
     s = s.strip().rstrip(".")
     return s
+
+
+# ---------------------------------------------------------------------------
+# Sweep-aware metrics
+# ---------------------------------------------------------------------------
+
+def compute_sweep_metrics(
+    results: list[SegmentLabelResult],
+) -> dict:
+    """Compute sweep-aware metrics from a full result set.
+
+    Returns a dict with:
+        cells: list[CellMetrics] — one per (model x variant) pair
+        stability: list[ModelStabilityScore] — one per model
+        agreement_by_variant: dict[variant_label, agreement_matrix]
+    """
+    # Partition results by (model, variant)
+    cells: list[CellMetrics] = []
+    by_model_variant: dict[tuple[str, str], list[SegmentLabelResult]] = defaultdict(list)
+    for r in results:
+        key = (r.model_name, r.extraction_variant_id or "default")
+        by_model_variant[key].append(r)
+
+    # Variant labels lookup
+    variant_labels: dict[str, str] = {}
+    for r in results:
+        vid = r.extraction_variant_id or "default"
+        if vid not in variant_labels:
+            variant_labels[vid] = r.extraction_label or "default"
+
+    # Compute per-cell metrics
+    for (model, vid), cell_results in by_model_variant.items():
+        total = len(cell_results)
+        successful = sum(1 for r in cell_results if r.parsed_success)
+        latencies = [r.latency_ms for r in cell_results if r.latency_ms is not None and r.latency_ms > 0]
+        confidences = [r.confidence for r in cell_results if r.confidence is not None]
+        costs = [r.estimated_cost for r in cell_results if r.estimated_cost is not None]
+
+        cells.append(CellMetrics(
+            model_name=model,
+            variant_label=variant_labels.get(vid, vid),
+            variant_id=vid,
+            total_segments=total,
+            successful_parses=successful,
+            parse_success_rate=successful / total if total > 0 else 0.0,
+            avg_latency_ms=float(np.mean(latencies)) if latencies else None,
+            median_latency_ms=float(np.median(latencies)) if latencies else None,
+            p95_latency_ms=float(np.percentile(latencies, 95)) if latencies else None,
+            avg_confidence=float(np.mean(confidences)) if confidences else None,
+            total_estimated_cost=sum(costs) if costs else None,
+        ))
+
+    # Model stability: self-agreement across variants for same segments
+    models = sorted({r.model_name for r in results})
+    variant_ids = sorted(variant_labels.keys())
+    stability: list[ModelStabilityScore] = []
+
+    for model in models:
+        # Group by (segment_id, variant_id) -> primary_action
+        seg_var_action: dict[tuple[str, str], str] = {}
+        for r in results:
+            if r.model_name == model and r.parsed_success and r.primary_action:
+                vid = r.extraction_variant_id or "default"
+                seg_var_action[(r.segment_id, vid)] = _normalize_action(r.primary_action)
+
+        # Self-agreement: for each segment, mean similarity across variant pairs
+        segments = sorted({s for s, _ in seg_var_action.keys()})
+        sim_sum = 0.0
+        total_pairs = 0
+        for seg in segments:
+            actions = [(v, seg_var_action.get((seg, v))) for v in variant_ids]
+            actions = [(v, a) for v, a in actions if a is not None]
+            for i in range(len(actions)):
+                for j in range(i + 1, len(actions)):
+                    total_pairs += 1
+                    sim_sum += compute_action_similarity(actions[i][1], actions[j][1])
+
+        self_agreement = sim_sum / total_pairs if total_pairs > 0 else 0.0
+
+        # Rank stability: rank models by parse_success_rate per variant, check consistency
+        rank_positions = []
+        for vid in variant_ids:
+            # Rank all models in this variant by parse rate
+            variant_rates = []
+            for m in models:
+                cell_r = by_model_variant.get((m, vid), [])
+                if cell_r:
+                    rate = sum(1 for r in cell_r if r.parsed_success) / len(cell_r)
+                else:
+                    rate = 0.0
+                variant_rates.append((m, rate))
+            variant_rates.sort(key=lambda x: x[1], reverse=True)
+            rank = next(i for i, (m, _) in enumerate(variant_rates, 1) if m == model)
+            rank_positions.append(rank)
+
+        # Rank stability: 1 - normalized std of ranks (1.0 = perfectly stable)
+        if len(rank_positions) > 1:
+            max_rank = len(models)
+            rank_std = float(np.std(rank_positions))
+            rank_stability = max(0.0, 1.0 - rank_std / max(max_rank - 1, 1))
+        else:
+            rank_stability = 1.0
+
+        stability.append(ModelStabilityScore(
+            model_name=model,
+            self_agreement=self_agreement,
+            rank_positions=rank_positions,
+            rank_stability=rank_stability,
+        ))
+
+    # Pairwise agreement per variant
+    agreement_by_variant: dict[str, dict[str, dict[str, float]]] = {}
+    for vid in variant_ids:
+        variant_results = [r for r in results if (r.extraction_variant_id or "default") == vid]
+        if variant_results:
+            agreement_by_variant[variant_labels.get(vid, vid)] = compute_agreement_matrix(variant_results)
+
+    return {
+        "cells": cells,
+        "stability": stability,
+        "agreement_by_variant": agreement_by_variant,
+    }
