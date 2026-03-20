@@ -129,6 +129,78 @@ def _normalized_match(a: str, b: str) -> bool:
     return False
 
 
+def compute_verbosity_stats(
+    results: list[SegmentLabelResult],
+) -> dict[str, dict[str, float]]:
+    """Compare output verbosity/richness across models.
+
+    Returns {model_name: {metric: value}}.
+    """
+    models = sorted({r.model_name for r in results})
+    stats: dict[str, dict[str, float]] = {}
+
+    for model in models:
+        mr = [r for r in results if r.model_name == model and r.parsed_success]
+        if not mr:
+            stats[model] = {}
+            continue
+
+        desc_lens = [len(r.description or "") for r in mr]
+        action_lens = [len(r.primary_action or "") for r in mr]
+        obj_counts = [len(r.objects) for r in mr]
+        secondary_counts = [len(r.secondary_actions) for r in mr]
+        uncertainty_counts = [len(r.uncertainty_flags) for r in mr]
+
+        stats[model] = {
+            "avg_description_length": float(np.mean(desc_lens)) if desc_lens else 0.0,
+            "avg_action_length": float(np.mean(action_lens)) if action_lens else 0.0,
+            "avg_objects_count": float(np.mean(obj_counts)) if obj_counts else 0.0,
+            "avg_secondary_actions": float(np.mean(secondary_counts)) if secondary_counts else 0.0,
+            "avg_uncertainty_flags": float(np.mean(uncertainty_counts)) if uncertainty_counts else 0.0,
+        }
+
+    return stats
+
+
+def compute_failure_analysis(
+    results: list[SegmentLabelResult],
+) -> dict[str, list[dict[str, str]]]:
+    """Analyze parse failures per model.
+
+    Returns {model_name: [{segment_id, error, raw_snippet}]}.
+    """
+    models = sorted({r.model_name for r in results})
+    failures: dict[str, list[dict[str, str]]] = {}
+
+    for model in models:
+        model_failures = []
+        for r in results:
+            if r.model_name == model and not r.parsed_success:
+                raw_snippet = (r.raw_response_text or "")[:200]
+                model_failures.append({
+                    "segment_id": r.segment_id,
+                    "error": r.parse_error or "Unknown error",
+                    "raw_snippet": raw_snippet,
+                })
+        if model_failures:
+            failures[model] = model_failures
+
+    return failures
+
+
+def _normalized_match(a: str, b: str) -> bool:
+    """Check if two action strings match after normalization."""
+    a = _normalize_action(a)
+    b = _normalize_action(b)
+    if a == b:
+        return True
+    # Check substring containment for near-matches
+    if len(a) > 3 and len(b) > 3:
+        if a in b or b in a:
+            return True
+    return False
+
+
 def _normalize_action(s: str) -> str:
     """Normalize an action string for comparison."""
     s = s.lower().strip()

@@ -110,3 +110,37 @@ def get_artifacts_dir(settings: Optional[AppSettings] = None) -> Path:
     path = Path(settings.vbench_artifacts_dir)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def setup_providers(
+    active_models: dict[str, ModelConfig],
+    settings: Optional[AppSettings] = None,
+) -> dict[str, Any]:
+    """Create provider instances for all providers needed by the active models.
+
+    Returns a dict of {provider_name: provider_instance}.
+    """
+    from .providers import OpenRouterProvider, OpenAINativeProvider, GeminiNativeProvider
+
+    if settings is None:
+        settings = get_settings()
+
+    needed_providers = {m.provider for m in active_models.values()}
+    providers: dict[str, Any] = {}
+
+    if "openrouter" in needed_providers:
+        if not settings.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY not set. Required for OpenRouter models.")
+        providers["openrouter"] = OpenRouterProvider(api_key=settings.openrouter_api_key)
+
+    if "openai" in needed_providers:
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY not set. Required for native OpenAI models.")
+        providers["openai"] = OpenAINativeProvider(api_key=settings.openai_api_key)
+
+    if "gemini" in needed_providers:
+        if not settings.google_api_key:
+            raise ValueError("GOOGLE_API_KEY not set. Required for native Gemini models.")
+        providers["gemini"] = GeminiNativeProvider(api_key=settings.google_api_key)
+
+    return providers

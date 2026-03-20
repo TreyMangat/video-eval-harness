@@ -188,10 +188,9 @@ def label(
     """Run labeling with configured models on segmented videos."""
     _setup(log_level)
     from .caching import ResponseCache
-    from .config import get_settings, load_benchmark_config, load_models_config
+    from .config import get_settings, load_benchmark_config, load_models_config, setup_providers
     from .labeling import LabelingRunner
     from .prompting import PromptBuilder
-    from .providers import OpenRouterProvider
     from .schemas import RunConfig
     from .storage import Storage
     from .utils.ids import generate_run_id
@@ -213,12 +212,11 @@ def label(
         raise typer.Exit(1)
 
     # Setup providers
-    providers = {}
-    if any(m.provider == "openrouter" for m in active_models.values()):
-        if not settings.openrouter_api_key:
-            console.print("[red]OPENROUTER_API_KEY not set[/red]")
-            raise typer.Exit(1)
-        providers["openrouter"] = OpenRouterProvider(api_key=settings.openrouter_api_key)
+    try:
+        providers = setup_providers(active_models, settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
 
     # Get videos and segments
     if video_id:
@@ -301,12 +299,12 @@ def run_benchmark(
         get_settings,
         load_benchmark_config,
         load_models_config,
+        setup_providers,
     )
     from .extraction import FrameExtractor
     from .labeling import LabelingRunner
     from .log import get_logger
     from .prompting import PromptBuilder
-    from .providers import OpenRouterProvider
     from .schemas import RunConfig, VideoMetadata
     from .segmentation import FixedWindowSegmenter
     from .storage import Storage
@@ -413,12 +411,11 @@ def run_benchmark(
         raise typer.Exit(1)
 
     # Setup providers
-    providers = {}
-    if any(m.provider == "openrouter" for m in active_models.values()):
-        if not settings.openrouter_api_key:
-            console.print("[red]OPENROUTER_API_KEY not set. Set it in .env[/red]")
-            raise typer.Exit(1)
-        providers["openrouter"] = OpenRouterProvider(api_key=settings.openrouter_api_key)
+    try:
+        providers = setup_providers(active_models, settings)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
 
     run_id = generate_run_id()
     run_config = RunConfig(

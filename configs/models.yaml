@@ -1,8 +1,12 @@
 # Model configuration for video eval harness
-# Model IDs are OpenRouter model identifiers
-# See https://openrouter.ai/models for available models
+# Model IDs are OpenRouter model identifiers by default.
+# See https://openrouter.ai/models for available models.
+#
+# Supported providers: openrouter, openai, gemini
+# OpenRouter is recommended (one key, many models).
 
 models:
+  # === OpenRouter models (recommended - one key for all) ===
   gpt4o:
     model_id: "openai/gpt-4o"
     provider: openrouter
@@ -57,7 +61,27 @@ models:
     supports_video: false
     notes: "Qwen2.5-VL-72B - strong open multimodal model"
 
-  # Uncomment/add more models as needed:
+  # === Native OpenAI models (requires OPENAI_API_KEY) ===
+  # Uncomment to use direct OpenAI API instead of OpenRouter:
+  # gpt4o-native:
+  #   model_id: "gpt-4o"
+  #   provider: openai
+  #   max_tokens: 2048
+  #   temperature: 0.1
+  #   supports_images: true
+  #   notes: "GPT-4o via native OpenAI API"
+
+  # === Native Gemini models (requires GOOGLE_API_KEY) ===
+  # Uncomment to use direct Gemini API instead of OpenRouter:
+  # gemini-native:
+  #   model_id: "gemini-2.0-flash"
+  #   provider: gemini
+  #   max_tokens: 2048
+  #   temperature: 0.1
+  #   supports_images: true
+  #   notes: "Gemini 2.0 Flash via native Google API"
+
+  # === More models via OpenRouter ===
   # llama-vision:
   #   model_id: "meta-llama/llama-4-scout"
   #   provider: openrouter
