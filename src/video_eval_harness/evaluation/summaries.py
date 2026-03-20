@@ -225,12 +225,12 @@ def export_results(
     run_id: str,
     formats: list[str] | None = None,
 ) -> list[Path]:
-    """Export results to CSV and/or Parquet.
+    """Export results to CSV, Parquet, and/or JSON.
 
     Returns list of exported file paths.
     """
     if formats is None:
-        formats = ["csv", "parquet"]
+        formats = ["csv", "parquet", "json"]
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

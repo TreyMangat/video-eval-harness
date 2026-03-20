@@ -15,23 +15,24 @@ A local-first, developer-friendly evaluation harness for comparing multiple fron
 
 All through a single API key (OpenRouter) and a clean CLI.
 
-## Quick Start
+## Quick start (3 commands)
+
+```bash
+# Install
+pip install -e ".[dev]"
+
+# Smoke test (3 fast models, ~$0.03)
+vbench run-benchmark path/to/video.mp4 --config configs/benchmark_fast.yaml
+
+# View results
+streamlit run src/video_eval_harness/viewer.py
+```
 
 ### Prerequisites
 
 - Python 3.10+
 - [FFmpeg](https://ffmpeg.org/download.html) installed and on PATH
 - An [OpenRouter](https://openrouter.ai/) API key
-
-### Install
-
-```bash
-cd video_labelling
-pip install -e ".[dev]"
-
-# Optional: for the Streamlit viewer
-pip install -e ".[ui]"
-```
 
 ### Configure
 
@@ -45,7 +46,7 @@ Edit `configs/models.yaml` to enable/disable models. Edit `configs/benchmark.yam
 ### Run a Benchmark
 
 ```bash
-# Full pipeline on a single video
+# Full pipeline on a single video (4 frontier models)
 vbench run-benchmark path/to/video.mp4
 
 # Full pipeline on a directory of videos
@@ -53,6 +54,30 @@ vbench run-benchmark path/to/videos/
 
 # With overrides
 vbench run-benchmark video.mp4 --window 15 --num-frames 4 --prompt rich
+
+# Run only specific models
+vbench run-benchmark video.mp4 --model-filter gemini-3.1-pro,gpt-5.4
+
+# With ground truth evaluation
+vbench run-benchmark video.mp4 --ground-truth annotations.json
+
+# Using Ego4D dataset adapter (auto-loads ground truth from manifest)
+vbench run-benchmark path/to/clips/ --adapter ego4d --manifest path/to/ego4d.json
+```
+
+## Sweep mode
+
+Sweep benchmarks extraction strategies (frame count x sampling method) alongside models:
+
+```bash
+# Preview the matrix without API calls
+vbench sweep path/to/video.mp4 --dry-run
+
+# Run full sweep (3 models x 6 extraction configs, ~$0.50)
+vbench sweep path/to/video.mp4 --config configs/benchmark_fast.yaml
+
+# Compare two runs
+vbench compare <run_id_1> <run_id_2>
 ```
 
 ### View Results
@@ -64,9 +89,9 @@ vbench inspect-run
 # Inspect a specific run
 vbench inspect-run run_abc123def456
 
-# Evaluate and export
+# Evaluate and export (CSV, Parquet, and JSON by default)
 vbench evaluate run_abc123def456
-vbench export run_abc123def456 --output ./exports --format csv,parquet
+vbench export run_abc123def456 --output ./exports
 
 # Streamlit viewer (requires [ui] extras)
 streamlit run src/video_eval_harness/viewer.py
@@ -86,14 +111,16 @@ The full step-by-step guide is in [`deploy/README.md`](deploy/README.md).
 
 | Command | Description |
 |---------|-------------|
+| `vbench run-benchmark <path>` | Full pipeline: ingest → segment → extract → label → summarize |
+| `vbench sweep <path>` | Extraction sweep: benchmark across frame counts and sampling methods |
+| `vbench compare <run_a> <run_b>` | Side-by-side run comparison with deltas |
+| `vbench evaluate <run_id>` | Evaluate and summarize a previous run |
+| `vbench export <run_id>` | Export results to CSV/Parquet/JSON |
+| `vbench inspect-run [run_id]` | List all runs or inspect a specific run |
 | `vbench ingest <path>` | Ingest video(s) and extract metadata |
 | `vbench segment` | Segment ingested videos into temporal windows |
 | `vbench extract-frames` | Extract representative frames from segments |
 | `vbench label` | Run model labeling on extracted segments |
-| `vbench run-benchmark <path>` | Full pipeline: ingest → segment → extract → label → summarize |
-| `vbench evaluate <run_id>` | Evaluate and summarize a previous run |
-| `vbench export <run_id>` | Export results to CSV/Parquet |
-| `vbench inspect-run [run_id]` | List all runs or inspect a specific run |
 | `vbench list-videos` | List all ingested videos |
 | `vbench version` | Show version |
 
@@ -108,10 +135,13 @@ src/video_eval_harness/
 ├── caching.py          # Disk-based response cache (diskcache)
 ├── log.py              # Rich-powered logging
 ├── viewer.py           # Streamlit result viewer
+├── sweep.py            # Multi-config extraction sweep orchestrator
 ├── adapters/           # Data source adapters
 │   ├── dataset_base.py # BaseAdapter interface
 │   ├── local_files.py  # Single file adapter
-│   └── directory.py    # Directory scanner adapter
+│   ├── directory.py    # Directory scanner adapter
+│   ├── manifest.py     # CSV/JSON manifest adapter
+│   └── ego4d.py        # Ego4D dataset adapter with ground truth
 ├── segmentation/       # Temporal segmentation strategies
 │   ├── base.py         # BaseSegmenter interface
 │   ├── fixed_window.py # Fixed-duration windows with optional overlap
@@ -119,7 +149,7 @@ src/video_eval_harness/
 ├── extraction/         # Frame extraction
 │   └── frames.py       # Uniform sampling + contact sheet generation
 ├── prompting/          # Prompt template system
-│   └── templates.py    # Jinja2 templates (concise, rich, strict_json)
+│   └── templates.py    # Jinja2 templates (concise, rich, action_label, strict_json)
 ├── labeling/           # Model inference orchestration
 │   ├── runner.py       # Concurrent multi-model labeling with resume
 │   └── normalization.py # JSON extraction + response parsing
@@ -127,8 +157,8 @@ src/video_eval_harness/
 │   ├── base.py         # BaseProvider interface
 │   └── openrouter.py   # OpenRouter implementation (retries, rate limits)
 ├── evaluation/         # Metrics and summaries
-│   ├── metrics.py      # Agreement matrix, ground truth accuracy, model stats
-│   └── summaries.py    # Rich tables, DataFrame export, CSV/Parquet
+│   ├── metrics.py      # Agreement matrix, ground truth accuracy, sweep metrics
+│   └── summaries.py    # Rich tables, DataFrame export, CSV/Parquet/JSON
 └── utils/              # Shared utilities
     ├── ffmpeg.py       # ffprobe metadata + frame extraction
     ├── ids.py          # Deterministic ID generation
@@ -143,22 +173,22 @@ Defines which models to benchmark. All models use OpenRouter model IDs:
 
 ```yaml
 models:
-  gpt4o:
-    model_id: "openai/gpt-4o"
+  gemini-3.1-pro:
+    model_id: "google/gemini-3.1-pro-preview"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
 
-  gemini-2-flash:
-    model_id: "google/gemini-2.0-flash-001"
+  gpt-5.4:
+    model_id: "openai/gpt-5.4"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
 ```
 
-See [OpenRouter Models](https://openrouter.ai/models) for available model IDs.
+Native providers (`openai`, `gemini`) are also supported — set the corresponding API key and `provider` field. See [OpenRouter Models](https://openrouter.ai/models) for available model IDs.
 
 ### benchmark.yaml
 
@@ -167,10 +197,12 @@ Controls the benchmark pipeline:
 ```yaml
 name: "default"
 models:              # Which models to run (keys from models.yaml)
-  - gpt4o
-  - gemini-2-flash
+  - gemini-3.1-pro
+  - gpt-5.4
+  - qwen3.5-vl
+  - claude-sonnet-4.6
 
-prompt_version: "concise"    # concise | rich | strict_json
+prompt_version: "action_label"  # action_label | concise | rich | strict_json
 
 segmentation:
   mode: fixed_window
@@ -189,9 +221,11 @@ extraction:
 
 ### Prompt Templates
 
-Three built-in templates:
+Five built-in templates:
 
-- **concise** — Compact labeling prompt, good default
+- **action_label** — Constrains primary_action to concise verb phrases (max 5 words, no articles). Best for agreement across models. Default.
+- **claude_action_label** — Like action_label but with stronger constraints for Claude models that tend to focus on animated sub-elements rather than the dominant visual.
+- **concise** — Compact labeling prompt, narrative primary_action strings
 - **rich** — Detailed egocentric video analysis prompt
 - **strict_json** — Minimal, forces raw JSON output
 
@@ -248,7 +282,7 @@ Each model response is normalized into `SegmentLabelResult`:
     "segment_id": "vid_cooking_demo_f8a2b1c3_seg0003",
     "start_time_s": 30.0,
     "end_time_s": 40.0,
-    "model_name": "gpt4o",
+    "model_name": "gemini-3.1-pro",
     "provider": "openrouter",
     "primary_action": "chopping vegetables",
     "secondary_actions": ["holding knife", "looking at cutting board"],
@@ -261,7 +295,7 @@ Each model response is normalized into `SegmentLabelResult`:
     "parsed_success": true,
     "latency_ms": 2340.5,
     "estimated_cost": 0.0023,
-    "prompt_version": "concise"
+    "prompt_version": "action_label"
 }
 ```
 
@@ -271,13 +305,20 @@ Each model response is normalized into `SegmentLabelResult`:
 - Parse success rate per model
 - Latency statistics (avg, median, P95)
 - Cost estimation
-- Pairwise primary-action agreement matrix
+- Pairwise primary-action agreement matrix (fuzzy matching with tiered similarity)
 - Confidence distribution
+- Cross-run comparison via `vbench compare`
 
 ### With Ground Truth
 - Exact match rate
-- Normalized match rate (handles prefixes like "the person is...")
+- Fuzzy match rate (tiered similarity >= 0.5)
+- Mean similarity score
 - Per-model accuracy breakdown
+
+### Sweep Metrics
+- Model x extraction variant matrix (parse rate, latency, confidence)
+- Model stability across extraction variants (self-agreement, rank stability)
+- Per-variant agreement matrices
 
 ## Extending the System
 
@@ -315,15 +356,21 @@ class MyDatasetAdapter(BaseAdapter):
         return "my_dataset"
 ```
 
-### Connecting Ego4D / Build.ai Data
+### Using Ego4D Data
 
-The adapter interface is designed for this. A future `Ego4DAdapter` would:
-1. Accept a manifest path or download directory
-2. Parse the dataset's annotation format
-3. Yield `VideoEntry` objects pointing to local video files
-4. Optionally include ground-truth labels as `GroundTruthLabel` objects
+The `Ego4DAdapter` parses the Ego4D JSON manifest and works with partial downloads:
 
-This is not yet implemented because the dataset requires accepting terms of use and downloading separately.
+```bash
+# Run benchmark on locally-downloaded Ego4D clips
+# Ground truth is auto-loaded from the manifest
+vbench run-benchmark path/to/clips/ --adapter ego4d --manifest path/to/ego4d.json
+```
+
+The adapter:
+1. Parses `ego4d.json` for video metadata and temporal action annotations
+2. Returns `VideoEntry` objects only for clips found in the local directory
+3. Extracts ground truth as `GroundTruthLabel` objects automatically
+4. Skips missing videos with a warning (the full dataset is ~5TB)
 
 ## Research Note: ARC-AGI Evaluation Patterns
 
@@ -351,7 +398,8 @@ artifacts/
 └── runs/               # Per-run exports
     └── <run_id>/
         ├── <run_id>_results.csv
-        └── <run_id>_results.parquet
+        ├── <run_id>_results.parquet
+        └── <run_id>_results.json
 ```
 
 ## Development

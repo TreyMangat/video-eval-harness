@@ -1035,7 +1035,7 @@ def compare(
 def export(
     run_id: str = typer.Argument(..., help="Run ID to export"),
     output_dir: str = typer.Option(".", "--output", "-o"),
-    format: str = typer.Option("csv,parquet", "--format", "-f"),
+    format: str = typer.Option("csv,parquet,json", "--format", "-f"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
