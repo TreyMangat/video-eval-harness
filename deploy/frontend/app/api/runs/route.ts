@@ -5,9 +5,11 @@ import { listArtifactRuns } from "../../../lib/local-runs";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const dataDir = new URL(request.url).searchParams.get("dataDir") ?? undefined;
+
   try {
-    const localRuns = await listArtifactRuns();
+    const localRuns = await listArtifactRuns(dataDir);
     if (localRuns.length > 0) {
       return NextResponse.json(localRuns, { status: 200 });
     }

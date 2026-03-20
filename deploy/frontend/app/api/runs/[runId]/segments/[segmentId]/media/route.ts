@@ -9,10 +9,13 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ runId: string; segmentId: string }> }
 ) {
+  const url = new URL(request.url);
+  const dataDir = url.searchParams.get("dataDir") ?? undefined;
+
   try {
     const { runId, segmentId } = await context.params;
-    const variantId = new URL(request.url).searchParams.get("variantId");
-    const localMedia = await loadArtifactSegmentMedia(runId, segmentId, variantId);
+    const variantId = url.searchParams.get("variantId");
+    const localMedia = await loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
     if (localMedia) {
       return NextResponse.json(localMedia, { status: 200 });
     }

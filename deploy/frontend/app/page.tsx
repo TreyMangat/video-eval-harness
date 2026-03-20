@@ -1,5 +1,5 @@
 import { BenchmarkDashboard } from "../components/benchmark-dashboard";
 
 export default function HomePage() {
-  return <BenchmarkDashboard />;
+  return <BenchmarkDashboard dataDir={process.env.VBENCH_RUNS_DIR} />;
 }

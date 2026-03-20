@@ -147,7 +147,7 @@ export type SweepMetrics = {
   variants: string[];
   cells: SweepCell[];
   stability: ModelStabilityScore[];
-  agreement_by_variant: Record<string, Record<string, number>>;
+  agreement_by_variant: Record<string, Record<string, Record<string, number>>>;
   parse_success_matrix: Record<string, Record<string, number>>;
   variant_id_by_label: Record<string, string>;
 };

@@ -9,9 +9,11 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ runId: string }> }
 ) {
+  const dataDir = new URL(request.url).searchParams.get("dataDir") ?? undefined;
+
   try {
     const { runId } = await context.params;
-    const localRun = await loadArtifactRun(runId);
+    const localRun = await loadArtifactRun(runId, dataDir);
     if (localRun) {
       return NextResponse.json(localRun, { status: 200 });
     }

@@ -9,6 +9,16 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   PYTHON_BIN="python3"
 fi
 
+if ! "$PYTHON_BIN" - <<'PY'
+import sys
+sys.exit(0 if sys.version_info >= (3, 10) else 1)
+PY
+then
+  PYTHON_VERSION="$("$PYTHON_BIN" --version 2>&1 || echo "unknown")"
+  echo "Python 3.10+ is required for this project. Found: ${PYTHON_VERSION}. Please use Python 3.12." >&2
+  exit 1
+fi
+
 echo "Installing development dependencies..."
 "$PYTHON_BIN" -m pip install -e ".[dev]"
 
