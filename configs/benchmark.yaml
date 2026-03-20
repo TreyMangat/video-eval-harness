@@ -1,0 +1,32 @@
+# Benchmark configuration
+# Controls which models to run, segmentation, and extraction settings
+
+name: "default"
+
+# Models to include in the benchmark (must match keys in models.yaml)
+# Empty list = run all models in models.yaml
+models:
+  - gpt4o
+  - gemini-2-flash
+  # - claude-sonnet
+  # - qwen-vl
+
+# Prompt template to use (concise, rich, strict_json)
+prompt_version: "concise"
+
+# Segmentation settings
+segmentation:
+  mode: fixed_window
+  window_size_s: 10.0
+  stride_s: null        # null = no overlap
+  min_segment_s: 2.0
+
+# Frame extraction settings
+extraction:
+  num_frames: 8
+  method: uniform
+  image_format: jpg
+  image_quality: 85
+  max_dimension: 1280
+  generate_contact_sheet: false
+  contact_sheet_cols: 4

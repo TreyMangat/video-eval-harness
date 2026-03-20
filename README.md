@@ -1,0 +1,360 @@
+# VBench — Multi-Model Video Segmentation & Labeling Benchmark Harness
+
+A local-first, developer-friendly evaluation harness for comparing multiple frontier vision-language models on temporal video understanding tasks. Designed for egocentric action recognition, but applicable to any video labeling workflow.
+
+## What It Does
+
+1. **Ingests** local videos (mp4, avi, mov, mkv, webm)
+2. **Segments** them into temporal windows (fixed-window or scene-boundary heuristic)
+3. **Extracts** representative frames from each segment
+4. **Labels** each segment by sending the same frames + prompt to multiple models via OpenRouter
+5. **Compares** model outputs: parse success, latency, cost, agreement, and optional ground-truth accuracy
+6. **Exports** results to CSV/Parquet and provides a Streamlit viewer for exploration
+
+All through a single API key (OpenRouter) and a clean CLI.
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10+
+- [FFmpeg](https://ffmpeg.org/download.html) installed and on PATH
+- An [OpenRouter](https://openrouter.ai/) API key
+
+### Install
+
+```bash
+cd video_labelling
+pip install -e ".[dev]"
+
+# Optional: for the Streamlit viewer
+pip install -e ".[ui]"
+```
+
+### Configure
+
+```bash
+cp .env.example .env
+# Edit .env and set OPENROUTER_API_KEY=your-key-here
+```
+
+Edit `configs/models.yaml` to enable/disable models. Edit `configs/benchmark.yaml` to adjust segmentation, extraction, and prompt settings.
+
+### Run a Benchmark
+
+```bash
+# Full pipeline on a single video
+vbench run-benchmark path/to/video.mp4
+
+# Full pipeline on a directory of videos
+vbench run-benchmark path/to/videos/
+
+# With overrides
+vbench run-benchmark video.mp4 --window 15 --num-frames 4 --prompt rich
+```
+
+### View Results
+
+```bash
+# List all runs
+vbench inspect-run
+
+# Inspect a specific run
+vbench inspect-run run_abc123def456
+
+# Evaluate and export
+vbench evaluate run_abc123def456
+vbench export run_abc123def456 --output ./exports --format csv,parquet
+
+# Streamlit viewer (requires [ui] extras)
+streamlit run src/video_eval_harness/viewer.py
+```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `vbench ingest <path>` | Ingest video(s) and extract metadata |
+| `vbench segment` | Segment ingested videos into temporal windows |
+| `vbench extract-frames` | Extract representative frames from segments |
+| `vbench label` | Run model labeling on extracted segments |
+| `vbench run-benchmark <path>` | Full pipeline: ingest → segment → extract → label → summarize |
+| `vbench evaluate <run_id>` | Evaluate and summarize a previous run |
+| `vbench export <run_id>` | Export results to CSV/Parquet |
+| `vbench inspect-run [run_id]` | List all runs or inspect a specific run |
+| `vbench list-videos` | List all ingested videos |
+| `vbench version` | Show version |
+
+## Architecture
+
+```
+src/video_eval_harness/
+├── cli.py              # Typer CLI with all commands
+├── config.py           # YAML config loading + Pydantic settings
+├── schemas.py          # Core data models (VideoMetadata, Segment, SegmentLabelResult, etc.)
+├── storage.py          # SQLite storage + artifact directory management
+├── caching.py          # Disk-based response cache (diskcache)
+├── log.py              # Rich-powered logging
+├── viewer.py           # Streamlit result viewer
+├── adapters/           # Data source adapters
+│   ├── dataset_base.py # BaseAdapter interface
+│   ├── local_files.py  # Single file adapter
+│   └── directory.py    # Directory scanner adapter
+├── segmentation/       # Temporal segmentation strategies
+│   ├── base.py         # BaseSegmenter interface
+│   ├── fixed_window.py # Fixed-duration windows with optional overlap
+│   └── scene_heuristic.py # Histogram-based shot boundary detection
+├── extraction/         # Frame extraction
+│   └── frames.py       # Uniform sampling + contact sheet generation
+├── prompting/          # Prompt template system
+│   └── templates.py    # Jinja2 templates (concise, rich, strict_json)
+├── labeling/           # Model inference orchestration
+│   ├── runner.py       # Concurrent multi-model labeling with resume
+│   └── normalization.py # JSON extraction + response parsing
+├── providers/          # Model provider backends
+│   ├── base.py         # BaseProvider interface
+│   └── openrouter.py   # OpenRouter implementation (retries, rate limits)
+├── evaluation/         # Metrics and summaries
+│   ├── metrics.py      # Agreement matrix, ground truth accuracy, model stats
+│   └── summaries.py    # Rich tables, DataFrame export, CSV/Parquet
+└── utils/              # Shared utilities
+    ├── ffmpeg.py       # ffprobe metadata + frame extraction
+    ├── ids.py          # Deterministic ID generation
+    └── time_utils.py   # Time formatting
+```
+
+## Configuration
+
+### models.yaml
+
+Defines which models to benchmark. All models use OpenRouter model IDs:
+
+```yaml
+models:
+  gpt4o:
+    model_id: "openai/gpt-4o"
+    provider: openrouter
+    max_tokens: 2048
+    temperature: 0.1
+    supports_images: true
+
+  gemini-2-flash:
+    model_id: "google/gemini-2.0-flash-001"
+    provider: openrouter
+    max_tokens: 2048
+    temperature: 0.1
+    supports_images: true
+```
+
+See [OpenRouter Models](https://openrouter.ai/models) for available model IDs.
+
+### benchmark.yaml
+
+Controls the benchmark pipeline:
+
+```yaml
+name: "default"
+models:              # Which models to run (keys from models.yaml)
+  - gpt4o
+  - gemini-2-flash
+
+prompt_version: "concise"    # concise | rich | strict_json
+
+segmentation:
+  mode: fixed_window
+  window_size_s: 10.0
+  stride_s: null             # null = no overlap
+  min_segment_s: 2.0
+
+extraction:
+  num_frames: 8
+  method: uniform
+  image_format: jpg
+  image_quality: 85
+  max_dimension: 1280
+  generate_contact_sheet: false
+```
+
+### Prompt Templates
+
+Three built-in templates:
+
+- **concise** — Compact labeling prompt, good default
+- **rich** — Detailed egocentric video analysis prompt
+- **strict_json** — Minimal, forces raw JSON output
+
+Custom templates can be added in `configs/prompts.yaml`:
+
+```yaml
+templates:
+  my_custom:
+    template: |
+      Analyze {{ num_frames }} frames from {{ start_time }}s to {{ end_time }}s.
+      Return JSON with primary_action, description, confidence.
+```
+
+## Key Design Decisions
+
+### Provider Abstraction
+
+OpenRouter is the primary provider — one API key accesses GPT-4o, Gemini, Claude, Qwen, Llama, and more. The provider layer is abstracted so native providers (OpenAI, Google) can be added later without changing the pipeline.
+
+### Frame-Based Input
+
+The first version works by extracting frames from video segments and sending them as images. This is the common denominator across all vision-language models. Direct video input can be added per-provider as an extension path.
+
+### Caching & Resume
+
+- **Response cache**: API responses are cached by (model, prompt_hash, input_hash). Re-running the same benchmark skips already-cached calls.
+- **Resume support**: The labeling runner checks SQLite before each request. Interrupted runs resume where they left off.
+- **Frame cache**: Extracted frames are saved to disk and reused across runs.
+
+### Structured Output Parsing
+
+Models are prompted to return JSON. The parser handles:
+- Direct JSON responses
+- JSON wrapped in markdown code blocks
+- JSON embedded in surrounding text
+- Parse failures are recorded without crashing the run
+
+### Reproducibility
+
+Every run saves:
+- Full config snapshot (models, prompt, segmentation, extraction)
+- Raw model responses
+- Parsed/normalized results
+- Timestamps and run ID
+
+## Output Schema
+
+Each model response is normalized into `SegmentLabelResult`:
+
+```python
+{
+    "run_id": "run_abc123",
+    "video_id": "vid_cooking_demo_f8a2b1c3",
+    "segment_id": "vid_cooking_demo_f8a2b1c3_seg0003",
+    "start_time_s": 30.0,
+    "end_time_s": 40.0,
+    "model_name": "gpt4o",
+    "provider": "openrouter",
+    "primary_action": "chopping vegetables",
+    "secondary_actions": ["holding knife", "looking at cutting board"],
+    "description": "Person is chopping vegetables on a wooden cutting board",
+    "objects": ["knife", "cutting board", "vegetables", "bowl"],
+    "environment_context": "indoor kitchen with natural lighting",
+    "confidence": 0.92,
+    "reasoning_summary_or_notes": "Clear chopping motion visible across frames",
+    "uncertainty_flags": [],
+    "parsed_success": true,
+    "latency_ms": 2340.5,
+    "estimated_cost": 0.0023,
+    "prompt_version": "concise"
+}
+```
+
+## Evaluation Metrics
+
+### Without Ground Truth
+- Parse success rate per model
+- Latency statistics (avg, median, P95)
+- Cost estimation
+- Pairwise primary-action agreement matrix
+- Confidence distribution
+
+### With Ground Truth
+- Exact match rate
+- Normalized match rate (handles prefixes like "the person is...")
+- Per-model accuracy breakdown
+
+## Extending the System
+
+### Adding a New Provider
+
+Implement `BaseProvider`:
+
+```python
+from video_eval_harness.providers.base import BaseProvider, ProviderResponse
+
+class MyProvider(BaseProvider):
+    provider_name = "my_provider"
+
+    def complete(self, model_id, prompt, image_paths=None, max_tokens=2048, temperature=0.1):
+        # Your implementation
+        return ProviderResponse(text=..., model=model_id, ...)
+
+    def list_models(self):
+        return [...]
+```
+
+### Adding a Dataset Adapter
+
+Implement `BaseAdapter`:
+
+```python
+from video_eval_harness.adapters.dataset_base import BaseAdapter, VideoEntry
+
+class MyDatasetAdapter(BaseAdapter):
+    def list_videos(self) -> list[VideoEntry]:
+        # Return list of VideoEntry objects
+        return [VideoEntry(path=Path("..."), metadata={...})]
+
+    def name(self) -> str:
+        return "my_dataset"
+```
+
+### Connecting Ego4D / Build.ai Data
+
+The adapter interface is designed for this. A future `Ego4DAdapter` would:
+1. Accept a manifest path or download directory
+2. Parse the dataset's annotation format
+3. Yield `VideoEntry` objects pointing to local video files
+4. Optionally include ground-truth labels as `GroundTruthLabel` objects
+
+This is not yet implemented because the dataset requires accepting terms of use and downloading separately.
+
+## Research Note: ARC-AGI Evaluation Patterns
+
+The spec mentioned investigating "Poetiq / ARC AGI" evaluation harness patterns. Research findings:
+
+- **Poetiq ARC-AGI Solver** uses an iterative refinement loop pattern (generate → verify → refine) rather than single-pass evaluation
+- The ARC Prize evaluation infrastructure emphasizes that harness design matters as much as model capability — identical models show ±20% variance depending on scaffolding
+- Key patterns adopted: config-driven model selection, cost tracking alongside accuracy, structured JSON task format, and custom evaluation harness over general frameworks
+- The EleutherAI `lm-evaluation-harness` was considered but is too text-focused for multimodal video tasks
+
+This harness draws architectural inspiration from these patterns (modular provider abstraction, config-driven evaluation, reproducible runs with cost tracking) while being purpose-built for video understanding tasks.
+
+## Artifacts Layout
+
+```
+artifacts/
+├── vbench.db           # SQLite database (metadata, results)
+├── cache/              # Disk cache for API responses
+├── frames/             # Extracted frames organized by video/segment
+│   └── <video_id>/
+│       └── <segment_id>/
+│           ├── frame_000.jpg
+│           ├── frame_001.jpg
+│           └── ...
+└── runs/               # Per-run exports
+    └── <run_id>/
+        ├── <run_id>_results.csv
+        └── <run_id>_results.parquet
+```
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Lint
+ruff check src/ tests/
+```
+
+## License
+
+MIT

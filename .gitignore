@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Artifacts (keep structure, ignore data)
+artifacts/runs/
+artifacts/cache/
+artifacts/frames/
+*.db
+*.sqlite
+
+# Test videos (generated, not checked in)
+test_videos/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tools
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db

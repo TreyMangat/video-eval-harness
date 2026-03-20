@@ -1,0 +1,12 @@
+# Prompt template configuration
+# Built-in templates: concise, rich, strict_json
+# Add custom templates below
+
+templates: {}
+  # custom_example:
+  #   template: |
+  #     Your custom prompt template here.
+  #     Available variables: {{ num_frames }}, {{ start_time }}, {{ end_time }}, {{ duration }}
+  #
+  # from_file_example:
+  #   file: "configs/my_custom_prompt.txt"
