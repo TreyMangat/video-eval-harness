@@ -1,6 +1,5 @@
 """Tests for Pydantic schemas."""
 
-import pytest
 from video_eval_harness.schemas import (
     ExtractedFrames,
     GroundTruthLabel,

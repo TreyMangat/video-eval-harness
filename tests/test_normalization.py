@@ -1,6 +1,5 @@
 """Tests for response parsing and normalization."""
 
-import pytest
 from video_eval_harness.labeling.normalization import (
     extract_json_from_text,
     normalize_confidence,
@@ -40,7 +39,7 @@ class TestExtractJson:
     def test_invalid_json(self):
         text = '{"primary_action": "cooking", bad}'
         # Should fail gracefully
-        result = extract_json_from_text(text)
+        extract_json_from_text(text)
         # Might or might not extract depending on regex match
         # The important thing is no exception
 

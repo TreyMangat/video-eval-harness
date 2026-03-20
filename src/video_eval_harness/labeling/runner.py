@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import concurrent.futures
-from typing import Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..sweep import SweepConfig
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
 

@@ -33,6 +33,12 @@ export type LabelResult = {
   latency_ms: number | null;
   estimated_cost: number | null;
   prompt_version: string | null;
+  extraction_variant_id?: string;
+  extraction_label?: string;
+  num_frames_used?: number;
+  sampling_method_used?: string;
+  sweep_id?: string;
+  timestamp?: string | null;
 };
 
 export type SegmentSummary = {
@@ -78,6 +84,7 @@ export type RunPayload = {
   agreement: Record<string, Record<string, number>>;
   segments: SegmentSummary[];
   results: LabelResult[];
+  sweep?: SweepMetrics;
 };
 
 export type FramePreview = {
@@ -93,6 +100,8 @@ export type SegmentMedia = {
   frame_timestamps_s: number[];
   contact_sheet_data_url: string | null;
   frames: FramePreview[];
+  variant_id?: string | null;
+  variant_label?: string | null;
 };
 
 export type RunListItem = {
@@ -110,4 +119,35 @@ export type ModelCatalogItem = {
   supports_images: boolean;
   role?: string;
   notes: string;
+};
+
+export type SweepCell = {
+  model_name: string;
+  variant_label: string;
+  variant_id: string;
+  total_segments: number;
+  successful_parses: number;
+  parse_success_rate: number;
+  avg_latency_ms: number | null;
+  median_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  avg_confidence: number | null;
+  total_estimated_cost: number | null;
+};
+
+export type ModelStabilityScore = {
+  model_name: string;
+  self_agreement: number;
+  rank_positions: number[];
+  rank_stability: number;
+};
+
+export type SweepMetrics = {
+  has_sweep: boolean;
+  variants: string[];
+  cells: SweepCell[];
+  stability: ModelStabilityScore[];
+  agreement_by_variant: Record<string, Record<string, number>>;
+  parse_success_matrix: Record<string, Record<string, number>>;
+  variant_id_by_label: Record<string, string>;
 };

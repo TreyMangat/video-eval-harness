@@ -1,6 +1,5 @@
 """Tests for segmentation logic."""
 
-import pytest
 from video_eval_harness.config import SegmentationConfig
 from video_eval_harness.schemas import SegmentationMode, VideoMetadata
 from video_eval_harness.segmentation import FixedWindowSegmenter

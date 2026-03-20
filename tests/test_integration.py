@@ -7,16 +7,11 @@ ingest -> segment -> extract frames -> label -> evaluate -> export.
 from __future__ import annotations
 
 import json
-import shutil
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from video_eval_harness.caching import ResponseCache
 from video_eval_harness.config import (
-    ExtractionConfig,
     ModelConfig,
     SegmentationConfig,
 )
@@ -32,14 +27,12 @@ from video_eval_harness.providers.base import BaseProvider, ProviderResponse
 from video_eval_harness.schemas import (
     ExtractedFrames,
     RunConfig,
-    Segment,
-    SegmentationMode,
     SegmentLabelResult,
     VideoMetadata,
 )
 from video_eval_harness.segmentation import FixedWindowSegmenter
 from video_eval_harness.storage import Storage
-from video_eval_harness.utils.ids import generate_run_id, generate_segment_id
+from video_eval_harness.utils.ids import generate_run_id
 
 
 class MockProvider(BaseProvider):

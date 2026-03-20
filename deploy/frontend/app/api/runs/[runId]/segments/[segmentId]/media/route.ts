@@ -1,11 +1,25 @@
 import { NextResponse } from "next/server";
 
 import { fetchBackend, readBackendJson } from "../../../../../../../lib/backend";
+import { loadArtifactSegmentMedia } from "../../../../../../../lib/local-runs";
+
+export const runtime = "nodejs";
 
 export async function GET(
   request: Request,
   context: { params: Promise<{ runId: string; segmentId: string }> }
 ) {
+  try {
+    const { runId, segmentId } = await context.params;
+    const variantId = new URL(request.url).searchParams.get("variantId");
+    const localMedia = await loadArtifactSegmentMedia(runId, segmentId, variantId);
+    if (localMedia) {
+      return NextResponse.json(localMedia, { status: 200 });
+    }
+  } catch {
+    // Fall through to backend mode.
+  }
+
   try {
     const { runId, segmentId } = await context.params;
     const response = await fetchBackend(`runs/${runId}/segments/${segmentId}/media`);

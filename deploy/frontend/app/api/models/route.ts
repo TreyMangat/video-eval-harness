@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { fetchBackend, readBackendJson } from "../../../lib/backend";
+import { DEFAULT_MODEL_CATALOG } from "../../../lib/model-catalog";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
@@ -9,8 +12,8 @@ export async function GET() {
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load models" },
-      { status: 500 }
+      { models: DEFAULT_MODEL_CATALOG, source: "default_catalog" },
+      { status: 200 }
     );
   }
 }
