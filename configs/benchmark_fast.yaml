@@ -1,7 +1,7 @@
 name: "fast"
 models:
   - gemini-3-flash
-  - gpt-4.1-nano
+  - gpt-5.4-mini
   - qwen3.5-27b
 
 prompt_version: "action_label"
