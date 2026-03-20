@@ -1058,6 +1058,54 @@ def export(
 
 
 @app.command()
+def export_sweep_summary(
+    run_id: str = typer.Argument(..., help="Run ID of a sweep run"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Export pre-computed sweep metrics as JSON for the dashboard.
+
+    Writes cells (model x variant metrics), stability scores, and
+    per-variant agreement matrices to a single JSON file.
+    """
+    _setup(log_level)
+    import json
+    from dataclasses import asdict
+
+    from .evaluation.metrics import compute_sweep_metrics
+    from .storage import Storage
+
+    storage = Storage(artifacts_dir)
+    results = storage.get_run_results(run_id)
+
+    if not results:
+        console.print(f"[yellow]No results found for run {run_id}[/yellow]")
+        raise typer.Exit(1)
+
+    has_sweep_data = any(r.extraction_variant_id for r in results)
+    if not has_sweep_data:
+        console.print("[yellow]Run does not contain sweep data. Use a sweep run ID.[/yellow]")
+        raise typer.Exit(1)
+
+    sweep_data = compute_sweep_metrics(results)
+
+    # Serialize dataclass objects to dicts
+    summary = {
+        "run_id": run_id,
+        "cells": [asdict(c) for c in sweep_data["cells"]],
+        "stability": [asdict(s) for s in sweep_data["stability"]],
+        "agreement_by_variant": sweep_data["agreement_by_variant"],
+    }
+
+    run_dir = storage.run_dir(run_id)
+    out_path = Path(run_dir) / f"{run_id}_sweep_summary.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    console.print(f"  [green]OK[/green] {out_path}")
+
+
+@app.command()
 def inspect_run(
     run_id: Optional[str] = typer.Argument(None, help="Run ID (omit to list all runs)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
