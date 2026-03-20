@@ -250,4 +250,10 @@ def export_results(
         exported.append(parquet_path)
         logger.info(f"Exported Parquet: {parquet_path}")
 
+    if "json" in formats:
+        json_path = output_dir / f"{run_id}_results.json"
+        json_path.write_text(df.to_json(orient="records", indent=2), encoding="utf-8")
+        exported.append(json_path)
+        logger.info(f"Exported JSON: {json_path}")
+
     return exported

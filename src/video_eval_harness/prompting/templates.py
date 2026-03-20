@@ -102,6 +102,37 @@ Respond with ONLY a JSON object:
 }
 """
 
+CLAUDE_ACTION_LABEL_TEMPLATE = """\
+You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment \
+({{ start_time }}s–{{ end_time }}s).
+
+Identify the single main action visible across the frames.
+
+CRITICAL output rules for primary_action:
+- MUST be a concise verb phrase, maximum 5 words, lowercase, no articles.
+- Describe the DOMINANT VISUAL, not minor animated elements.
+- If the scene shows a static display (test pattern, title card, menu screen), the primary \
+action is "displaying [what]" — NOT a description of small moving elements within it.
+- Do NOT add qualifiers, adjectives, or sub-elements. Strip to the core verb + object.
+  Good: "displaying test pattern", "chopping vegetables", "walking forward"
+  Bad: "displaying countdown timer test pattern", "counting down digits sequentially"
+- Put ALL detail (timers, counters, specific objects, motion) in "description", not primary_action.
+- secondary_actions: short verb phrases only, same rules.
+- objects: nouns only, no descriptions.
+
+Respond with ONLY a JSON object:
+{
+  "primary_action": "verb phrase, max 5 words",
+  "secondary_actions": ["other actions if any"],
+  "description": "detailed natural language description of what is happening",
+  "objects": ["notable objects visible"],
+  "environment_context": "brief setting description",
+  "confidence": 0.85,
+  "reasoning_summary_or_notes": "brief reasoning",
+  "uncertainty_flags": ["uncertain aspects if any"]
+}
+"""
+
 STRICT_JSON_TEMPLATE = """\
 Analyze {{ num_frames }} frames from a video segment ({{ start_time }}s-{{ end_time }}s).
 Output ONLY valid JSON matching this schema exactly. No markdown, no explanation, no preamble.
@@ -114,6 +145,7 @@ BUILTIN_TEMPLATES = {
     "concise": CONCISE_LABEL_TEMPLATE,
     "rich": RICH_LABEL_TEMPLATE,
     "action_label": ACTION_LABEL_TEMPLATE,
+    "claude_action_label": CLAUDE_ACTION_LABEL_TEMPLATE,
     "strict_json": STRICT_JSON_TEMPLATE,
 }
 

@@ -14,6 +14,7 @@ from rich.table import Table
 from . import __version__
 
 if TYPE_CHECKING:
+    from .adapters import Ego4DAdapter
     from .caching import ResponseCache
     from .config import AppSettings, BenchmarkConfig
     from .storage import Storage
@@ -296,6 +297,8 @@ def run_benchmark(
     methods: Optional[str] = typer.Option(None, "--methods", help="Override sweep methods axis (e.g. uniform,keyframe)"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
+    manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -306,6 +309,7 @@ def run_benchmark(
     Use --dry-run with --sweep to preview the matrix without API calls.
     Use --model-filter to run only a subset of models from the config.
     Use --ground-truth to evaluate against known labels.
+    Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -346,22 +350,97 @@ def run_benchmark(
     if model_filter:
         filter_models = [m.strip() for m in model_filter.split(",")]
 
-    # Load ground truth labels if provided
+    # Load ground truth labels if provided (or auto-load from adapter)
     gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
+    ego4d_adapter = None
+    if adapter == "ego4d":
+        ego4d_adapter = _make_ego4d_adapter(manifest, path)
+        if gt_labels is None:
+            gt_labels = ego4d_adapter.load_ground_truth()
+            if gt_labels:
+                console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
 
     # Branch: sweep mode vs single-config mode
     if sweep and sweep_cfg is not None:
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            dry_run, artifacts_dir, log_level, filter_models, gt_labels,
+            dry_run, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            num_frames, artifacts_dir, log_level, filter_models, gt_labels,
+            num_frames, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
         )
 
     cache.close()
+
+
+def _ingest_videos(
+    path: str,
+    storage: "Storage",
+    probe_video,
+    generate_video_id,
+    VideoMetadata,
+    ego4d_adapter: Optional[object] = None,
+) -> tuple[list, list]:
+    """Ingest videos using the appropriate adapter.
+
+    Returns (videos, entries) where videos is a list of VideoMetadata and
+    entries is the raw VideoEntry list from the adapter.
+    """
+    if ego4d_adapter is not None:
+        entries = ego4d_adapter.list_videos()
+    else:
+        from .adapters import DirectoryAdapter, LocalFileAdapter
+
+        p = Path(path)
+        if p.is_dir():
+            adapter = DirectoryAdapter(p)
+        else:
+            adapter = LocalFileAdapter([p])
+        entries = adapter.list_videos()
+
+    if not entries:
+        console.print("[red]No video files found.[/red]")
+        raise typer.Exit(1)
+
+    videos = []
+    for entry in entries:
+        try:
+            info = probe_video(entry.path)
+            vid = entry.video_id or generate_video_id(entry.path)
+            meta = VideoMetadata(
+                video_id=vid,
+                source_path=str(entry.path.resolve()),
+                filename=entry.path.name,
+                duration_s=info.duration_s,
+                width=info.width,
+                height=info.height,
+                fps=info.fps,
+                codec=info.codec,
+                file_size_bytes=info.file_size_bytes,
+            )
+            storage.save_video(meta)
+            videos.append(meta)
+            console.print(f"  [green]OK[/green] {entry.path.name} ({info.duration_s:.1f}s)")
+        except Exception as e:
+            console.print(f"  [red]FAIL[/red] {entry.path.name}: {e}")
+
+    if not videos:
+        console.print("[red]No videos ingested successfully.[/red]")
+        raise typer.Exit(1)
+
+    return videos, entries
+
+
+def _make_ego4d_adapter(manifest: Optional[str], path: str) -> "Ego4DAdapter":
+    """Create an Ego4D adapter from CLI args."""
+    from .adapters import Ego4DAdapter
+
+    if not manifest:
+        console.print("[red]--adapter ego4d requires --manifest path/to/ego4d.json[/red]")
+        raise typer.Exit(1)
+    return Ego4DAdapter(manifest_path=manifest, video_dir=path)
 
 
 def _load_ground_truth(gt_path: str) -> list:
@@ -437,6 +516,7 @@ def _run_single(
     log_level: str,
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
+    ego4d_adapter: Optional[object] = None,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -476,44 +556,7 @@ def _run_single(
 
     # 1. Ingest
     console.rule("[bold]Step 1: Ingest[/bold]")
-    from .adapters import DirectoryAdapter, LocalFileAdapter
-
-    p = Path(path)
-    if p.is_dir():
-        adapter = DirectoryAdapter(p)
-    else:
-        adapter = LocalFileAdapter([p])
-
-    entries = adapter.list_videos()
-    if not entries:
-        console.print("[red]No video files found.[/red]")
-        raise typer.Exit(1)
-
-    videos = []
-    for entry in entries:
-        try:
-            info = probe_video(entry.path)
-            vid = generate_video_id(entry.path)
-            meta = VideoMetadata(
-                video_id=vid,
-                source_path=str(entry.path.resolve()),
-                filename=entry.path.name,
-                duration_s=info.duration_s,
-                width=info.width,
-                height=info.height,
-                fps=info.fps,
-                codec=info.codec,
-                file_size_bytes=info.file_size_bytes,
-            )
-            storage.save_video(meta)
-            videos.append(meta)
-            console.print(f"  [green]OK[/green] {entry.path.name} ({info.duration_s:.1f}s)")
-        except Exception as e:
-            console.print(f"  [red]FAIL[/red] {entry.path.name}: {e}")
-
-    if not videos:
-        console.print("[red]No videos ingested successfully.[/red]")
-        raise typer.Exit(1)
+    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, ego4d_adapter)
 
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
@@ -617,6 +660,7 @@ def _run_sweep(
     log_level: str,
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
+    ego4d_adapter: Optional[object] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -661,44 +705,7 @@ def _run_sweep(
 
     # 1. Ingest
     console.rule("[bold]Step 1: Ingest[/bold]")
-    from .adapters import DirectoryAdapter, LocalFileAdapter
-
-    p = Path(path)
-    if p.is_dir():
-        adapter = DirectoryAdapter(p)
-    else:
-        adapter = LocalFileAdapter([p])
-
-    entries = adapter.list_videos()
-    if not entries:
-        console.print("[red]No video files found.[/red]")
-        raise typer.Exit(1)
-
-    videos = []
-    for entry in entries:
-        try:
-            info = probe_video(entry.path)
-            vid = generate_video_id(entry.path)
-            meta = VideoMetadata(
-                video_id=vid,
-                source_path=str(entry.path.resolve()),
-                filename=entry.path.name,
-                duration_s=info.duration_s,
-                width=info.width,
-                height=info.height,
-                fps=info.fps,
-                codec=info.codec,
-                file_size_bytes=info.file_size_bytes,
-            )
-            storage.save_video(meta)
-            videos.append(meta)
-            console.print(f"  [green]OK[/green] {entry.path.name} ({info.duration_s:.1f}s)")
-        except Exception as e:
-            console.print(f"  [red]FAIL[/red] {entry.path.name}: {e}")
-
-    if not videos:
-        console.print("[red]No videos ingested successfully.[/red]")
-        raise typer.Exit(1)
+    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, ego4d_adapter)
 
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
@@ -868,6 +875,8 @@ def sweep(
     window: Optional[float] = typer.Option(None, "--window", "-w"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
+    manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -875,6 +884,7 @@ def sweep(
 
     Equivalent to 'run-benchmark --sweep --frames 4,8,16 --methods uniform,keyframe'.
     Use --model-filter to run only a subset of models.
+    Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
     """
     _setup(log_level)
     from .caching import ResponseCache
@@ -895,10 +905,17 @@ def sweep(
 
     filter_list = [m.strip() for m in model_filter.split(",")] if model_filter else None
     gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
+    ego4d_adapter = None
+    if adapter == "ego4d":
+        ego4d_adapter = _make_ego4d_adapter(manifest, path)
+        if gt_labels is None:
+            gt_labels = ego4d_adapter.load_ground_truth()
+            if gt_labels:
+                console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
 
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-        dry_run, artifacts_dir, log_level, filter_list, gt_labels,
+        dry_run, artifacts_dir, log_level, filter_list, gt_labels, ego4d_adapter,
     )
 
     cache.close()
