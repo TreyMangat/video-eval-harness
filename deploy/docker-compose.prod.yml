@@ -1,0 +1,33 @@
+services:
+  vbench-cli:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    volumes:
+      - ../configs:/app/configs
+      - ../artifacts:/app/artifacts
+      - ../data:/app/data
+    command: ["version"]
+
+  vbench-viewer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    entrypoint:
+      [
+        "streamlit",
+        "run",
+        "src/video_eval_harness/viewer.py",
+        "--server.port",
+        "8501",
+        "--server.address",
+        "0.0.0.0"
+      ]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../artifacts:/app/artifacts:ro

@@ -70,6 +70,16 @@ vbench export run_abc123def456 --output ./exports --format csv,parquet
 streamlit run src/video_eval_harness/viewer.py
 ```
 
+## Public Visual Test Path
+
+If you want a public, browser-based version instead of the local CLI plus Streamlit flow:
+
+1. deploy the Modal backend in [`deploy/modal/app.py`](deploy/modal/app.py)
+2. point the Next.js frontend in [`deploy/frontend`](deploy/frontend) at that Modal URL with `MODAL_API_BASE_URL`
+3. paste a public or pre-signed clip URL into the dashboard's live benchmark form
+
+The full step-by-step guide is in [`deploy/README.md`](deploy/README.md).
+
 ## CLI Commands
 
 | Command | Description |

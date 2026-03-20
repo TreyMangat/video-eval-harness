@@ -57,7 +57,7 @@ export type RunPayload = {
     segmentation_mode: string;
     segmentation_config: Record<string, unknown>;
     extraction_config: Record<string, unknown>;
-    model_configs: Record<string, { role?: string; notes?: string }>;
+    model_configs?: Record<string, { role?: string; notes?: string }>;
     video_ids: string[];
     created_at: string;
   };
@@ -108,6 +108,6 @@ export type ModelCatalogItem = {
   model_id: string;
   provider: string;
   supports_images: boolean;
-  role: string;
+  role?: string;
   notes: string;
 };

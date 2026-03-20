@@ -63,31 +63,31 @@ api.add_middleware(
 
 
 # Every model gets identical input and is compared head-to-head.
-# This is a benchmark, not a pipeline — no role assignments.
+# This is a benchmark, not a pipeline; no role assignments.
 DEFAULT_MODELS = {
     "gemini-3.1-pro": {
         "model_id": "google/gemini-3.1-pro-preview",
         "provider": "openrouter",
         "supports_images": True,
-        "notes": "Frontier reasoning model with multimodal support, 1M-token context",
+        "notes": "Highest-accuracy option in the default set; best when label quality matters more than speed.",
     },
     "gpt-5.4": {
         "model_id": "openai/gpt-5.4",
         "provider": "openrouter",
         "supports_images": True,
-        "notes": "OpenAI latest frontier model with 1M+ context, text and image inputs",
+        "notes": "Strong structured-output and reasoning model; useful as a second comparison anchor.",
     },
     "qwen3.5-vl": {
         "model_id": "qwen/qwen3.5-397b-a17b",
         "provider": "openrouter",
         "supports_images": True,
-        "notes": "Native vision-language model, hybrid MoE activating 17B params",
+        "notes": "Lower-cost multimodal candidate that is useful for cost-versus-quality comparisons.",
     },
     "claude-sonnet-4.6": {
         "model_id": "anthropic/claude-sonnet-4.6",
         "provider": "openrouter",
         "supports_images": True,
-        "notes": "Strong multimodal reasoning from Anthropic",
+        "notes": "Another strong frontier baseline for head-to-head agreement and latency comparisons.",
     },
 }
 
@@ -123,7 +123,8 @@ def process_video(request: dict[str, Any]) -> dict[str, Any]:
     from video_eval_harness.labeling import LabelingRunner
     from video_eval_harness.prompting import PromptBuilder
     from video_eval_harness.schemas import RunConfig, VideoMetadata
-    from video_eval_harness.segmentation import build_segmenter
+    from video_eval_harness.segmentation.fixed_window import FixedWindowSegmenter
+    from video_eval_harness.segmentation.scene_heuristic import SceneHeuristicSegmenter
     from video_eval_harness.storage import Storage
     from video_eval_harness.utils.ffmpeg import probe_video
     from video_eval_harness.utils.ids import generate_run_id, generate_video_id
@@ -163,10 +164,13 @@ def process_video(request: dict[str, Any]) -> dict[str, Any]:
             window_size_s=payload.window_size,
             stride_s=payload.stride,
         )
-        segments = build_segmenter(seg_cfg).segment(meta)
+        if seg_cfg.mode == "scene_heuristic":
+            segments = SceneHeuristicSegmenter(seg_cfg).segment(meta)
+        else:
+            segments = FixedWindowSegmenter(seg_cfg).segment(meta)
         storage.save_segments(segments)
 
-        ext_cfg = ExtractionConfig(num_frames=payload.num_frames)
+        ext_cfg = ExtractionConfig(num_frames=payload.num_frames, generate_contact_sheet=True)
         extractor = FrameExtractor(ext_cfg, storage)
         frames_map = {}
         for seg in segments:
