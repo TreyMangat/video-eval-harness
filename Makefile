@@ -1,27 +1,31 @@
-﻿PYTHON ?= py -3.12
-PIP_INSTALL = $(PYTHON) -m pip install -e ".[dev,ui]"
-PYTEST = $(PYTHON) -m pytest
-RUFF = $(PYTHON) -m ruff
-
-.PHONY: install test lint run-test sweep-dry-run docker-build docker-run
+.PHONY: install test test-all lint run-test sweep-dry-run sweep-fast docker-build viewer docker-run
 
 install:
-	$(PIP_INSTALL)
+	pip install -e ".[dev]"
 
 test:
-	$(PYTEST) -q
+	python -m pytest -q -m "not integration"
+
+test-all:
+	python -m pytest -q
 
 lint:
-	$(RUFF) check src tests
+	python -m ruff check src/ tests/
 
 run-test:
 	vbench run-benchmark test_videos/test_25s.mp4 --config configs/benchmark_fast.yaml
 
 sweep-dry-run:
-	vbench run-benchmark test_videos/test_25s.mp4 --config configs/benchmark_fast.yaml --sweep --dry-run
+	vbench run-benchmark test_videos/test_25s.mp4 --sweep --dry-run
+
+sweep-fast:
+	vbench sweep test_videos/test_25s.mp4 --config configs/benchmark_fast.yaml
 
 docker-build:
 	docker build -t vbench .
+
+viewer:
+	streamlit run src/video_eval_harness/viewer.py
 
 docker-run:
 	docker run --rm -v "$(CURDIR)/configs:/app/configs" -v "$(CURDIR)/artifacts:/app/artifacts" -v "$(CURDIR)/test_videos:/app/test_videos" --env-file .env vbench run-benchmark /app/test_videos/test_25s.mp4 --config /app/configs/benchmark_fast.yaml

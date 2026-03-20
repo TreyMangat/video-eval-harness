@@ -51,6 +51,7 @@ target-version = "py310"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "integration: tests that require external services or local multimedia tooling",
+    "integration: requires external services",
 ]

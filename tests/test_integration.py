@@ -34,6 +34,8 @@ from video_eval_harness.segmentation import FixedWindowSegmenter
 from video_eval_harness.storage import Storage
 from video_eval_harness.utils.ids import generate_run_id
 
+pytestmark = pytest.mark.integration
+
 
 class MockProvider(BaseProvider):
     """Mock provider that returns deterministic JSON responses."""

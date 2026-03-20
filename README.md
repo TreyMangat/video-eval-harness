@@ -1,4 +1,6 @@
-# VBench — Multi-Model Video Segmentation & Labeling Benchmark Harness
+# VBench - Multi-Model Video Segmentation & Labeling Benchmark Harness
+
+[![CI](https://github.com/TreyMangat/video-eval-harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TreyMangat/video-eval-harness/actions/workflows/ci.yml)
 
 A local-first, developer-friendly evaluation harness for comparing multiple frontier vision-language models on temporal video understanding tasks. Designed for egocentric action recognition, but applicable to any video labeling workflow.
 
