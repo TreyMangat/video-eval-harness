@@ -288,7 +288,39 @@ def main() -> None:
                 st.bar_chart(latency_df.groupby("model_name")["latency_ms"].mean())
 
     st.header("Segment-Level Comparison")
-    segments = sorted({result.segment_id for result in results})
+    video_segments = {
+        video_id: sorted(
+            {result.segment_id for result in results if result.video_id == video_id}
+        )
+        for video_id in sorted({result.video_id for result in results})
+    }
+    video_breakdown = pd.DataFrame(
+        [
+            {
+                "Video ID": video_id,
+                "Segments": len(segments),
+            }
+            for video_id, segments in video_segments.items()
+        ]
+    )
+    if not video_breakdown.empty:
+        st.subheader("Test Suite Breakdown")
+        st.dataframe(video_breakdown, width="stretch")
+
+    video_options = list(video_segments.keys())
+    selected_video_id = st.selectbox(
+        "Select Video",
+        options=video_options,
+        format_func=lambda video_id: (
+            f"{video_id} ({len(video_segments.get(video_id, []))} segments)"
+        ),
+    )
+
+    segments = video_segments.get(selected_video_id, [])
+    if not segments:
+        st.info("No segments found for the selected video.")
+        return
+
     selected_segment = st.selectbox("Select Segment", segments)
 
     selected_variant_label = "All variants"

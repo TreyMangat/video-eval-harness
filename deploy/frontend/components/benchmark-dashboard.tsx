@@ -222,6 +222,86 @@ export function BenchmarkDashboard({ dataDir }: { dataDir?: string }) {
     return cells;
   }, [sweepData]);
 
+  const totalRunCost = useMemo(() => {
+    if (!runData) {
+      return 0;
+    }
+    return runData.results.reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0);
+  }, [runData]);
+
+  const costPerModelRows = useMemo(
+    () =>
+      runData
+        ? runData.models
+            .map((model) => ({
+              model,
+              totalCost: runData.results
+                .filter((result) => result.model_name === model)
+                .reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0),
+            }))
+            .sort((left, right) => right.totalCost - left.totalCost)
+        : [],
+    [runData]
+  );
+
+  const costPerVariantRows = useMemo(() => {
+    if (!runData) {
+      return [];
+    }
+
+    const byVariant = new Map<string, number>();
+    for (const result of runData.results) {
+      const variant = resultVariantLabel(result);
+      byVariant.set(variant, (byVariant.get(variant) ?? 0) + (result.estimated_cost ?? 0));
+    }
+
+    const preferredOrder = sweepData?.variants ?? [];
+    return [...byVariant.entries()]
+      .map(([variant, totalCost]) => ({ variant, totalCost }))
+      .sort((left, right) => {
+        const leftIndex = preferredOrder.indexOf(left.variant);
+        const rightIndex = preferredOrder.indexOf(right.variant);
+        if (leftIndex !== -1 || rightIndex !== -1) {
+          return (
+            (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+            (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex)
+          );
+        }
+        return right.totalCost - left.totalCost;
+      });
+  }, [runData, sweepData]);
+
+  const costPerSegmentRows = useMemo(() => {
+    if (!runData) {
+      return [];
+    }
+
+    const segmentLookup = new Map(
+      runData.segments.map((segment) => [segment.segment_id, segment] as const)
+    );
+    const bySegment = new Map<
+      string,
+      { segmentId: string; videoId: string; startTimeS: number; totalCost: number }
+    >();
+
+    for (const result of runData.results) {
+      const segment = segmentLookup.get(result.segment_id);
+      const current = bySegment.get(result.segment_id) ?? {
+        segmentId: result.segment_id,
+        videoId: result.video_id,
+        startTimeS: segment?.start_time_s ?? result.start_time_s,
+        totalCost: 0,
+      };
+      current.totalCost += result.estimated_cost ?? 0;
+      bySegment.set(result.segment_id, current);
+    }
+
+    return [...bySegment.values()].sort(
+      (left, right) =>
+        left.videoId.localeCompare(right.videoId) || left.startTimeS - right.startTimeS
+    );
+  }, [runData]);
+
   const runSourceLabel = dataDir || "Auto-detecting artifacts/runs";
 
   useEffect(() => {
@@ -465,6 +545,15 @@ export function BenchmarkDashboard({ dataDir }: { dataDir?: string }) {
                         {sweepData ? "Variants available" : "No sweep results yet"}
                       </span>
                     </article>
+                    <article className="summary-card">
+                      <p className="card-label">Total Cost</p>
+                      <p className="card-value">{formatMoney(totalRunCost)}</p>
+                      <span className="card-sublabel">
+                        {runData.segments.length > 0
+                          ? `${formatMoney(totalRunCost / runData.segments.length)} per segment`
+                          : "No segment cost data"}
+                      </span>
+                    </article>
                   </section>
 
                   <section className="raw-section" style={{ marginBottom: 20 }}>
@@ -542,6 +631,105 @@ export function BenchmarkDashboard({ dataDir }: { dataDir?: string }) {
                           })}
                         </tbody>
                       </table>
+                    </div>
+                  </section>
+
+                  <section className="raw-section" style={{ marginBottom: 20 }}>
+                    <h3>Cost Summary</h3>
+                    <p className="chart-desc">
+                      Economic rollup for the full run, including model, variant, and segment-level
+                      cost totals.
+                    </p>
+
+                    <div className="analysis-grid three-up">
+                      <article className="summary-card">
+                        <p className="card-label">Run Total</p>
+                        <p className="card-value">{formatMoney(totalRunCost)}</p>
+                        <span className="card-sublabel">Summed from result-level estimated_cost</span>
+                      </article>
+                      <article className="summary-card">
+                        <p className="card-label">Cost / Segment</p>
+                        <p className="card-value">
+                          {runData.segments.length > 0
+                            ? formatMoney(totalRunCost / runData.segments.length)
+                            : "-"}
+                        </p>
+                        <span className="card-sublabel">
+                          Average across {runData.segments.length} segments
+                        </span>
+                      </article>
+                      <article className="summary-card">
+                        <p className="card-label">Costed Rows</p>
+                        <p className="card-value">
+                          {
+                            runData.results.filter((result) => result.estimated_cost != null).length
+                          }
+                        </p>
+                        <span className="card-sublabel">
+                          Results with non-null estimated cost
+                        </span>
+                      </article>
+                    </div>
+
+                    <div className="analysis-grid three-up">
+                      <div className="table-scroll">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Model</th>
+                              <th>Total Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {costPerModelRows.map((row) => (
+                              <tr key={row.model}>
+                                <td>{row.model}</td>
+                                <td>{formatMoney(row.totalCost)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="table-scroll">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Variant</th>
+                              <th>Total Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {costPerVariantRows.map((row) => (
+                              <tr key={row.variant}>
+                                <td>{row.variant}</td>
+                                <td>{formatMoney(row.totalCost)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="table-scroll">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Segment</th>
+                              <th>Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {costPerSegmentRows.map((row) => (
+                              <tr key={row.segmentId}>
+                                <td>
+                                  {row.videoId} / {row.segmentId}
+                                </td>
+                                <td>{formatMoney(row.totalCost)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </section>
 
