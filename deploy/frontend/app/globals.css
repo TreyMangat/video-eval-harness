@@ -72,6 +72,12 @@ textarea:focus {
   gap: 12px;
 }
 
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .logo {
   margin: 0;
   font-size: 1.6rem;
@@ -499,6 +505,14 @@ textarea:focus {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.run-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 /* ─── Tabs ─── */
@@ -988,6 +1002,186 @@ textarea:focus {
   font-size: 0.85rem;
 }
 
+/* Analysis Routes */
+
+.analysis-shell {
+  width: min(1440px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 20px 0 64px;
+}
+
+.analysis-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.analysis-title {
+  margin: 4px 0 0;
+  font-size: 2rem;
+}
+
+.analysis-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analysis-grid {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.analysis-grid.two-up {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analysis-grid.three-up {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.report-heading {
+  margin-bottom: 20px;
+}
+
+.report-copy {
+  margin: 8px 0 0;
+  color: var(--muted);
+  max-width: 760px;
+  line-height: 1.5;
+}
+
+.compare-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.sample-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sample-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 14px;
+}
+
+.sample-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sample-card h4 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.sample-meta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-family: var(--font-mono), monospace;
+}
+
+.sample-agreement {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+
+.compact-table th,
+.compact-table td {
+  padding: 7px 9px;
+}
+
+.delta-positive {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.delta-negative {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.delta-neutral {
+  color: var(--muted);
+}
+
+@media print {
+  :root {
+    --bg: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-card: #ffffff;
+    --line: rgba(20, 40, 29, 0.18);
+    --shadow: none;
+  }
+
+  html,
+  body {
+    background: white;
+  }
+
+  .no-print,
+  .top-bar,
+  .sidebar {
+    display: none !important;
+  }
+
+  .analysis-shell,
+  .page-shell {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .analysis-grid.two-up,
+  .analysis-grid.three-up,
+  .sample-grid,
+  .charts-grid,
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agreement-section,
+  .raw-section,
+  .sample-card,
+  .summary-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #d0d0d0;
+    background: white;
+  }
+
+  .chart-desc,
+  .helper-copy,
+  .logo-sub,
+  .card-sublabel {
+    color: #444;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
 /* ─── Responsive ─── */
 
 @media (max-width: 1080px) {
@@ -1027,6 +1221,13 @@ textarea:focus {
 
   .run-header {
     flex-direction: column;
+  }
+
+  .analysis-grid.two-up,
+  .analysis-grid.three-up,
+  .sample-grid,
+  .compare-form {
+    grid-template-columns: 1fr;
   }
 }
 

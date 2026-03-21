@@ -137,23 +137,44 @@ function coerceSweepSummary(value: unknown): SweepMetrics | null {
     return null;
   }
 
+  const variants =
+    Array.isArray(record.variants) && record.variants.length > 0
+      ? record.variants
+      : [...new Set(record.cells.map((cell) => cell.variant_label))].sort();
+
+  const parseSuccessMatrix =
+    record.parse_success_matrix && typeof record.parse_success_matrix === "object"
+      ? record.parse_success_matrix
+      : Object.fromEntries(
+          record.cells.reduce<Map<string, Record<string, number>>>((matrix, cell) => {
+            const byVariant = matrix.get(cell.model_name) ?? {};
+            byVariant[cell.variant_label] = cell.parse_success_rate;
+            matrix.set(cell.model_name, byVariant);
+            return matrix;
+          }, new Map())
+        );
+
+  const variantIdByLabel =
+    record.variant_id_by_label && typeof record.variant_id_by_label === "object"
+      ? record.variant_id_by_label
+      : Object.fromEntries(
+          record.cells.map((cell) => [cell.variant_label, cell.variant_id])
+        );
+
+  const hasSweep =
+    typeof record.has_sweep === "boolean" ? record.has_sweep : record.cells.length > 0;
+
   return {
-    has_sweep: Boolean(record.has_sweep),
-    variants: Array.isArray(record.variants) ? record.variants : [],
+    has_sweep: hasSweep,
+    variants,
     cells: record.cells,
     stability: record.stability,
     agreement_by_variant:
       record.agreement_by_variant && typeof record.agreement_by_variant === "object"
         ? record.agreement_by_variant
         : {},
-    parse_success_matrix:
-      record.parse_success_matrix && typeof record.parse_success_matrix === "object"
-        ? record.parse_success_matrix
-        : {},
-    variant_id_by_label:
-      record.variant_id_by_label && typeof record.variant_id_by_label === "object"
-        ? record.variant_id_by_label
-        : {},
+    parse_success_matrix: parseSuccessMatrix,
+    variant_id_by_label: variantIdByLabel,
   };
 }
 

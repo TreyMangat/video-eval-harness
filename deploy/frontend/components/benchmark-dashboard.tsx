@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { DEFAULT_MODEL_CATALOG } from "../lib/model-catalog";
 import { computeSweepMetrics } from "../lib/run-metrics";
@@ -330,7 +331,12 @@ export function BenchmarkDashboard({ dataDir }: { dataDir?: string }) {
           <h1 className="logo">VBench Dashboard</h1>
           <span className="logo-sub">React frontend wired to exported run artifacts</span>
         </div>
-        <div className="badge">{runs.length} runs</div>
+        <div className="top-bar-actions">
+          <Link href="/compare" className="ghost-btn small">
+            Compare Runs
+          </Link>
+          <div className="badge">{runs.length} runs</div>
+        </div>
       </header>
 
       <div className="main-layout">
@@ -404,21 +410,29 @@ export function BenchmarkDashboard({ dataDir }: { dataDir?: string }) {
                     segments | {formatDateTime(runData.config.created_at)}
                   </p>
                 </div>
-                <div className="tab-bar">
-                  {(["overview", "segments", "raw"] as Tab[]).map((currentTab) => (
-                    <button
-                      key={currentTab}
-                      type="button"
-                      className={`tab-btn ${tab === currentTab ? "active" : ""}`}
-                      onClick={() => setTab(currentTab)}
-                    >
-                      {currentTab === "overview"
-                        ? "Overview"
-                        : currentTab === "segments"
-                          ? "Segments"
-                          : "Raw Data"}
-                    </button>
-                  ))}
+                <div className="run-header-actions">
+                  <Link href={`/report/${runData.run_id}`} className="ghost-btn small">
+                    Printable Report
+                  </Link>
+                  <Link href={`/compare?runA=${runData.run_id}`} className="ghost-btn small">
+                    Compare This Run
+                  </Link>
+                  <div className="tab-bar">
+                    {(["overview", "segments", "raw"] as Tab[]).map((currentTab) => (
+                      <button
+                        key={currentTab}
+                        type="button"
+                        className={`tab-btn ${tab === currentTab ? "active" : ""}`}
+                        onClick={() => setTab(currentTab)}
+                      >
+                        {currentTab === "overview"
+                          ? "Overview"
+                          : currentTab === "segments"
+                            ? "Segments"
+                            : "Raw Data"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </section>
 

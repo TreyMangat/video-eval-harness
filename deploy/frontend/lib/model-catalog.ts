@@ -23,11 +23,32 @@ export const DEFAULT_MODEL_CATALOG: ModelCatalogItem[] = [
     notes: "Lower-cost multimodal candidate that is useful for cost-versus-quality comparisons.",
   },
   {
-    name: "claude-sonnet-4.6",
-    model_id: "anthropic/claude-sonnet-4.6",
+    name: "llama-4-maverick",
+    model_id: "meta-llama/llama-4-maverick",
     provider: "openrouter",
     supports_images: true,
-    notes: "Another strong frontier baseline for head-to-head agreement and latency comparisons.",
+    notes: "Meta's multimodal MoE frontier model and the default fourth benchmark slot.",
+  },
+  {
+    name: "gemini-3-flash",
+    model_id: "google/gemini-3-flash-preview",
+    provider: "openrouter",
+    supports_images: true,
+    notes: "Fast Gemini tier used for smoke tests and low-cost sweeps.",
+  },
+  {
+    name: "gpt-5.4-mini",
+    model_id: "openai/gpt-5.4-mini",
+    provider: "openrouter",
+    supports_images: true,
+    notes: "Lower-cost GPT-5.4 variant used in the fast benchmark config.",
+  },
+  {
+    name: "qwen3.5-27b",
+    model_id: "qwen/qwen3.5-27b",
+    provider: "openrouter",
+    supports_images: true,
+    notes: "Smaller Qwen variant for quick sweeps and throughput validation.",
   },
 ];
 

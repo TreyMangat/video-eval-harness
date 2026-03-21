@@ -203,7 +203,7 @@ def main() -> None:
             },
             na_rep="-",
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
     if len(models) > 1:
@@ -212,7 +212,7 @@ def main() -> None:
         agreement_df = pd.DataFrame(agreement).reindex(index=models, columns=models)
         st.dataframe(
             _style_rate_matrix(agreement_df),
-            use_container_width=True,
+            width="stretch",
         )
 
     if has_sweep:
@@ -236,7 +236,7 @@ def main() -> None:
             index=models, columns=sorted(parse_success_matrix.columns)
         )
         st.subheader("Model x Variant Parse Success")
-        st.dataframe(_style_rate_matrix(parse_success_matrix), use_container_width=True)
+        st.dataframe(_style_rate_matrix(parse_success_matrix), width="stretch")
 
         st.subheader("Stability Scores")
         stability_df = pd.DataFrame(
@@ -254,7 +254,7 @@ def main() -> None:
             stability_df.style.format(
                 {"Self Agreement": "{:.0%}", "Rank Stability": "{:.2f}"}, na_rep="-"
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.subheader("Agreement by Variant")
@@ -265,7 +265,7 @@ def main() -> None:
                 )
                 st.dataframe(
                     _style_rate_matrix(matrix_df),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
     st.header("Latency Distribution")
@@ -283,7 +283,7 @@ def main() -> None:
                     color="extraction_label" if has_sweep and "extraction_label" in latency_df.columns else None,
                     title="Latency by Model (ms)",
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             except ImportError:
                 st.bar_chart(latency_df.groupby("model_name")["latency_ms"].mean())
 
@@ -361,7 +361,7 @@ def main() -> None:
 
     st.header("Raw Data")
     if st.checkbox("Show raw results table"):
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
 
     csv = df.to_csv(index=False)
     st.download_button(
