@@ -444,6 +444,36 @@ def _ingest_videos(
     return videos, entries
 
 
+def _auto_window(videos: list, seg_cfg, window_override: Optional[float]) -> None:
+    """Auto-select window size based on max video duration.
+
+    Only applies when --window was not explicitly set. Modifies seg_cfg
+    in place.
+    """
+    if window_override is not None:
+        return
+
+    max_duration = max((v.duration_s for v in videos), default=0.0)
+    if max_duration <= 0:
+        return
+
+    if max_duration < 60:
+        auto_window = 10.0
+    elif max_duration < 300:
+        auto_window = 30.0
+    elif max_duration < 1800:
+        auto_window = 60.0
+    else:
+        auto_window = 120.0
+
+    if auto_window != seg_cfg.window_size_s:
+        seg_cfg.window_size_s = auto_window
+        console.print(
+            f"  Auto-selected window size: [cyan]{auto_window:.0f}s[/cyan] "
+            f"(max video duration: {max_duration:.0f}s)"
+        )
+
+
 def _make_ego4d_adapter(manifest: Optional[str], path: str) -> "Ego4DAdapter":
     """Create an Ego4D adapter from CLI args."""
     from .adapters import Ego4DAdapter
@@ -597,6 +627,9 @@ def _run_single(
     console.rule("[bold]Step 1: Ingest[/bold]")
     videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, dataset_adapter)
 
+    # Auto-select window size based on video duration
+    _auto_window(videos, seg_cfg, window)
+
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
     segmenter = FixedWindowSegmenter(seg_cfg)
@@ -747,6 +780,9 @@ def _run_sweep(
     # 1. Ingest
     console.rule("[bold]Step 1: Ingest[/bold]")
     videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, dataset_adapter)
+
+    # Auto-select window size based on video duration
+    _auto_window(videos, seg_cfg, window)
 
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
@@ -970,6 +1006,150 @@ def sweep(
     )
 
     cache.close()
+
+
+@app.command()
+def estimate(
+    path: str = typer.Argument(..., help="Video file or directory"),
+    config_file: str = typer.Option(str(DEFAULT_CONFIGS / "benchmark.yaml"), "--config", "-c"),
+    models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
+    window: Optional[float] = typer.Option(None, "--window", "-w", help="Override window size"),
+    sweep: bool = typer.Option(False, "--sweep", help="Estimate as sweep run"),
+    frames: Optional[str] = typer.Option(None, "--frames", help="Sweep frame counts (e.g. 4,8,16)"),
+    methods: Optional[str] = typer.Option(None, "--methods", help="Sweep methods (e.g. uniform,keyframe)"),
+    model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
+    manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for ego4d adapter"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Estimate API calls, cost, and time without running anything.
+
+    Probes video duration(s), computes segment count, and multiplies by
+    models and variants. No frames are extracted, no API calls are made.
+    """
+    _setup(log_level)
+    from .config import load_benchmark_config, load_models_config
+    from .utils.ffmpeg import probe_video
+
+    bench_cfg = load_benchmark_config(config_file)
+    models_cfg = load_models_config(models_file)
+
+    # Resolve models
+    model_names = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+    if model_filter:
+        model_names = [m.strip() for m in model_filter.split(",") if m.strip() in model_names]
+
+    # Probe video durations
+    p = Path(path)
+    if adapter == "buildai":
+        from .adapters import BuildAIAdapter
+        ba = BuildAIAdapter(data_dir=data_dir or path)
+        entries = ba.list_videos()
+        durations = []
+        for e in entries:
+            try:
+                info = probe_video(e.path)
+                durations.append(info.duration_s)
+            except Exception:
+                pass
+    elif adapter == "ego4d":
+        from .adapters import Ego4DAdapter
+        ego = Ego4DAdapter(manifest_path=manifest or "", video_dir=data_dir or path)
+        entries = ego.list_videos()
+        durations = []
+        for e in entries:
+            try:
+                info = probe_video(e.path)
+                durations.append(info.duration_s)
+            except Exception:
+                pass
+    elif p.is_dir():
+        from .adapters import DirectoryAdapter
+        entries = DirectoryAdapter(p).list_videos()
+        durations = []
+        for e in entries:
+            try:
+                info = probe_video(e.path)
+                durations.append(info.duration_s)
+            except Exception:
+                pass
+    else:
+        try:
+            info = probe_video(p)
+            durations = [info.duration_s]
+        except Exception as e:
+            console.print(f"[red]Cannot probe {path}: {e}[/red]")
+            raise typer.Exit(1)
+
+    if not durations:
+        console.print("[red]No videos found.[/red]")
+        raise typer.Exit(1)
+
+    total_duration = sum(durations)
+    max_duration = max(durations)
+
+    # Auto-window
+    seg_window = window or bench_cfg.segmentation.window_size_s
+    if window is None:
+        if max_duration < 60:
+            seg_window = 10.0
+        elif max_duration < 300:
+            seg_window = 30.0
+        elif max_duration < 1800:
+            seg_window = 60.0
+        else:
+            seg_window = 120.0
+
+    # Compute segments
+    import math
+    total_segments = sum(math.ceil(d / seg_window) for d in durations)
+
+    # Sweep variants
+    num_variants = 1
+    if sweep or frames or methods:
+        frames_list = [int(x.strip()) for x in frames.split(",")] if frames else [4, 8, 16]
+        methods_list = [x.strip() for x in methods.split(",")] if methods else ["uniform", "keyframe"]
+        num_variants = len(frames_list) * len(methods_list)
+
+    num_models = len(model_names)
+    total_calls = total_segments * num_models * num_variants
+
+    # Cost estimate: rough per-call cost by tier
+    avg_cost_per_call = 0.005  # ~$0.005 per call for fast models, ~$0.015 for frontier
+    tier_costs = {"frontier": 0.015, "fast": 0.003}
+    cost_sum = 0.0
+    for m in model_names:
+        cfg = models_cfg.get(m)
+        tier = getattr(cfg, "tier", "frontier") if cfg else "frontier"
+        cost_sum += tier_costs.get(tier, 0.01)
+    avg_cost_per_call = cost_sum / num_models if num_models > 0 else 0.005
+
+    est_cost_low = total_calls * avg_cost_per_call * 0.5
+    est_cost_high = total_calls * avg_cost_per_call * 1.5
+
+    # Time estimate: 5s default per call
+    avg_latency_s = 5.0
+    est_time_s = total_calls * avg_latency_s / max(4, num_models)  # parallel across models
+
+    # Print
+    console.rule("[bold]Estimate[/bold]")
+    table = Table(show_lines=True)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Videos", str(len(durations)))
+    table.add_row("Total duration", f"{total_duration:.0f}s ({total_duration / 60:.1f}m)")
+    table.add_row("Window size", f"{seg_window:.0f}s" + (" (auto)" if window is None else ""))
+    table.add_row("Segments", str(total_segments))
+    table.add_row("Models", f"{num_models} ({', '.join(model_names[:3])}{'...' if num_models > 3 else ''})")
+    if num_variants > 1:
+        table.add_row("Variants", str(num_variants))
+    table.add_row("Total API calls", f"[bold yellow]{total_calls}[/bold yellow]")
+    table.add_row("Est. cost", f"${est_cost_low:.2f} – ${est_cost_high:.2f}")
+    table.add_row("Est. time", f"{est_time_s / 60:.1f} min")
+
+    console.print(table)
 
 
 @app.command()

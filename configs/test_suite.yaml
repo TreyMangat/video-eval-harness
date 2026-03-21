@@ -1,0 +1,36 @@
+# Standard test suite configuration
+# 5-8 clips covering different action types, ~150 API calls per sweep
+#
+# Usage:
+#   vbench sweep test_videos/ --config configs/test_suite.yaml
+#   vbench estimate test_videos/ --config configs/test_suite.yaml --sweep
+
+name: "standard_test_suite"
+description: "5-8 clips covering different action types, ~150 API calls per sweep"
+
+models:
+  - gemini-3-flash
+  - gpt-5.4-mini
+  - qwen3.5-27b
+
+prompt_version: "action_label_v2"
+
+segmentation:
+  mode: fixed_window
+  window_size_s: 10.0     # auto-windowing overrides this for long videos
+  stride_s: null
+  min_segment_s: 2.0
+
+extraction:
+  num_frames: 8
+  method: uniform
+  image_format: jpg
+  image_quality: 85
+  max_dimension: 960
+  generate_contact_sheet: false
+  contact_sheet_cols: 4
+
+  # Sweep axis — used when running with vbench sweep
+  sweep:
+    num_frames: [4, 8]
+    methods: [uniform]
