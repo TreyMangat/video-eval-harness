@@ -302,6 +302,7 @@ def run_benchmark(
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID (e.g. 'my-experiment')"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -316,6 +317,7 @@ def run_benchmark(
     Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
     Use --max-segments to cap segment count and prevent expensive runs.
+    Use --name to set a custom name in the run ID.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -376,13 +378,13 @@ def run_benchmark(
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             dry_run, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context, max_segments,
+            vocab_context, max_segments, name,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             num_frames, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context, max_segments,
+            vocab_context, max_segments, name,
         )
 
     cache.close()
@@ -619,6 +621,7 @@ def _run_single(
     dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
     max_segments: Optional[int] = None,
+    run_name: Optional[str] = None,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -716,7 +719,8 @@ def _run_single(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    run_id = generate_run_id()
+    video_names = [v.filename for v in videos]
+    run_id = generate_run_id(video_names=video_names, name=run_name)
     run_config = RunConfig(
         run_id=run_id,
         models=model_names,
@@ -777,6 +781,7 @@ def _run_sweep(
     dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
     max_segments: Optional[int] = None,
+    run_name: Optional[str] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -860,7 +865,8 @@ def _run_sweep(
         raise typer.Exit(1)
 
     # 4. Create run
-    run_id = generate_run_id()
+    video_names = [v.filename for v in videos]
+    run_id = generate_run_id(video_names=video_names, is_sweep=True, name=run_name)
     run_config = RunConfig(
         run_id=run_id,
         models=model_names,
@@ -1005,6 +1011,7 @@ def sweep(
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -1016,6 +1023,7 @@ def sweep(
     Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
     Use --max-segments to cap segment count and prevent expensive runs.
+    Use --name to set a custom name in the run ID.
     """
     _setup(log_level)
     from .caching import ResponseCache
@@ -1051,7 +1059,7 @@ def sweep(
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
         dry_run, artifacts_dir, log_level, filter_list, gt_labels, dataset_adapter,
-        vocab_context, max_segments,
+        vocab_context, max_segments, name,
     )
 
     cache.close()
@@ -1062,6 +1070,7 @@ def test_suite(
     videos: str = typer.Option("test_videos", "--videos", "-v", help="Video directory"),
     tier: str = typer.Option("fast", "--tier", "-t", help="Model tier: fast or frontier"),
     max_segments: int = typer.Option(25, "--max-segments", help="Max segments per run"),
+    name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID"),
     models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
@@ -1173,7 +1182,7 @@ def test_suite(
         None, None,  # prompt_version, window (use config defaults + auto)
         False, artifacts_dir, log_level,
         None, None, None, {},  # filter_models, gt_labels, dataset_adapter, extra_context
-        max_segments,
+        max_segments, name,
     )
 
     # Export sweep summary
@@ -1551,17 +1560,21 @@ def inspect_run(
             return
 
         table = Table(title="All Runs", show_lines=True)
-        table.add_column("Run ID", style="cyan")
-        table.add_column("Created")
-        table.add_column("Models")
-        table.add_column("Videos")
+        table.add_column("Run ID", style="cyan", no_wrap=True)
+        table.add_column("Date", justify="right")
+        table.add_column("Models", justify="right")
+        table.add_column("Videos", justify="right")
         table.add_column("Prompt")
 
         for r in runs:
+            # Mark legacy IDs for clarity
+            rid = r.run_id
+            if rid.startswith("run_") and len(rid) == 16 and "_" not in rid[4:]:
+                rid = f"{rid} (legacy)"
             table.add_row(
-                r.run_id,
-                r.created_at[:19],
-                ", ".join(r.models[:3]),
+                rid,
+                r.created_at[:16].replace("T", " "),
+                f"{len(r.models)} model{'s' if len(r.models) != 1 else ''}",
                 str(len(r.video_ids)),
                 r.prompt_version,
             )
