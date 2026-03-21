@@ -1939,6 +1939,129 @@ def download_dataset(
 
 
 @app.command()
+def accuracy_test(
+    dataset: str = typer.Argument("ucf101", help="Dataset: ucf101"),
+    data_dir: str = typer.Option("data/ucf101/UCF-101", "--data-dir", "-d",
+        help="Path to dataset root (e.g. data/ucf101/UCF-101/)"),
+    subset: int = typer.Option(50, "--subset", "-n",
+        help="Number of clips to randomly sample"),
+    categories: Optional[str] = typer.Option(None, "--categories",
+        help="Comma-separated category filter (e.g. Hammering,Knitting)"),
+    limit_per_category: int = typer.Option(5, "--limit-per-category",
+        help="Max clips per category before sampling"),
+    config_file: str = typer.Option(str(DEFAULT_CONFIGS / "benchmark_fast.yaml"), "--config", "-c"),
+    models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
+    model_filter: Optional[str] = typer.Option(None, "--model-filter",
+        help="Comma-separated model subset"),
+    name: Optional[str] = typer.Option(None, "--name", help="Custom run name"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show plan without running"),
+    llm_judge: bool = typer.Option(False, "--llm-judge",
+        help="Use LLM to score accuracy (~$0.001/pair)"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Run accuracy benchmark against a labeled dataset.
+
+    Samples N clips, runs the benchmark pipeline, and scores each model's
+    action labels against ground truth derived from the dataset structure.
+
+    Requires the dataset to be downloaded first. For UCF101:
+      Download from: https://www.crcv.ucf.edu/data/UCF101.php
+      Extract to: data/ucf101/UCF-101/
+    """
+    _setup(log_level)
+    import random
+
+    from .caching import ResponseCache
+    from .config import get_settings, load_benchmark_config, load_models_config
+
+    if dataset != "ucf101":
+        console.print(f"[red]Unknown dataset: {dataset}. Available: ucf101[/red]")
+        raise typer.Exit(1)
+
+    adapter = _make_ucf101_adapter(data_dir, data_dir, categories, limit_per_category)
+    all_videos = adapter.list_videos()
+
+    if not all_videos:
+        console.print(f"[red]No videos found in {data_dir}[/red]")
+        raise typer.Exit(1)
+
+    # Sample subset
+    sample_size = min(subset, len(all_videos))
+    sample = random.sample(all_videos, sample_size)
+    gt_labels = adapter.load_ground_truth()
+
+    # Filter GT to sampled video IDs
+    sampled_ids = {v.video_id for v in sample}
+    gt_labels = [g for g in gt_labels if g.video_id in sampled_ids]
+
+    cat_set = {v.metadata["category"] for v in sample if v.metadata}
+    console.rule("[bold]Accuracy Test Plan[/bold]")
+    console.print(f"  Dataset: [cyan]{dataset}[/cyan]")
+    console.print(f"  Clips: [cyan]{sample_size}[/cyan] sampled from {len(all_videos)} total")
+    console.print(f"  Categories: [cyan]{len(cat_set)}[/cyan] unique")
+    console.print(f"  Ground truth labels: [cyan]{len(gt_labels)}[/cyan]")
+
+    if dry_run:
+        # Show sample of ground truth labels
+        table = Table(title="Sample Ground Truth Labels", show_lines=True)
+        table.add_column("Video ID", style="cyan")
+        table.add_column("Action")
+        table.add_column("Category")
+        for v in sample[:10]:
+            table.add_row(
+                v.video_id or "-",
+                v.metadata.get("ground_truth_action", "-") if v.metadata else "-",
+                v.metadata.get("category", "-") if v.metadata else "-",
+            )
+        if sample_size > 10:
+            table.add_row("...", f"({sample_size - 10} more)", "...")
+        console.print(table)
+        console.print("\n[yellow]Dry run — no API calls made.[/yellow]")
+        raise typer.Exit(0)
+
+    # Load configs and run the pipeline
+    settings = get_settings()
+    storage_mod = __import__("video_eval_harness.storage", fromlist=["Storage"])
+    Storage = storage_mod.Storage
+    storage = Storage(artifacts_dir)
+    cache = ResponseCache()
+
+    bench_cfg = load_benchmark_config(config_file)
+    models_cfg = load_models_config(models_file)
+
+    filter_list = [m.strip() for m in model_filter.split(",")] if model_filter else None
+
+    # Build a temporary adapter that only returns the sampled clips
+    class _SampledAdapter:
+        def list_videos(self):
+            return sample
+        def load_ground_truth(self):
+            return gt_labels
+        def name(self):
+            return "ucf101_sample"
+
+    run_name = name or f"accuracy-{dataset}-{sample_size}clips"
+
+    _run_single(
+        bench_cfg, models_cfg, data_dir, settings, storage, cache,
+        None, None, None, artifacts_dir, log_level,
+        filter_models=filter_list,
+        gt_labels=gt_labels,
+        dataset_adapter=_SampledAdapter(),
+        max_segments=None,
+        run_name=run_name,
+        use_llm_judge=llm_judge,
+    )
+
+    if llm_judge and gt_labels:
+        results = storage.get_run_results(storage.list_runs()[0].run_id)
+        _run_llm_judge(results)
+
+    cache.close()
+
+
+@app.command()
 def version() -> None:
     """Show version."""
     console.print(f"video-eval-harness v{__version__}")

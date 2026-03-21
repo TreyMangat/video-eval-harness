@@ -50,6 +50,53 @@ def camel_to_label(name: str) -> str:
     return words
 
 
+def ucf101_label_to_phrase(folder_name: str) -> str:
+    """Convert CamelCase UCF101 folder name to a gerund verb phrase.
+
+    More aggressive normalization than :func:`camel_to_label` — attempts to
+    convert the first word to present participle (gerund) form so the label
+    is comparable with VLM action descriptions.
+
+    ``ApplyEyeMakeup`` → ``applying eye makeup``
+    ``CuttingInKitchen`` → ``cutting in kitchen``
+    ``HorseRiding`` → ``horse riding``
+    ``Hammering`` → ``hammering``
+    ``PlayingGuitar`` → ``playing guitar``
+    """
+    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", folder_name).split()
+    if not words:
+        return folder_name.lower()
+
+    phrase_words = [w.lower() for w in words]
+    first = phrase_words[0]
+
+    # Already a gerund — leave it
+    if first.endswith("ing"):
+        return " ".join(phrase_words)
+
+    # If any later word is already a gerund (e.g. "HorseRiding"), the first
+    # word is a noun modifier — don't convert it.
+    if any(w.endswith("ing") for w in phrase_words[1:]):
+        return " ".join(phrase_words)
+
+    # Simple gerund conversion heuristics
+    if first.endswith("e") and not first.endswith("ee"):
+        # "make" → "making", "ride" → "riding", but "see" stays "seeing"
+        phrase_words[0] = first[:-1] + "ing"
+    elif (
+        len(first) >= 3
+        and first[-1] not in "aeiouywx"
+        and first[-2] in "aeiou"
+        and first[-3] not in "aeiou"
+    ):
+        # CVC pattern: "put" → "putting", "cut" → "cutting", "run" → "running"
+        phrase_words[0] = first + first[-1] + "ing"
+    else:
+        phrase_words[0] = first + "ing"
+
+    return " ".join(phrase_words)
+
+
 class UCF101Adapter(BaseAdapter):
     """Adapter for the UCF101 action recognition dataset.
 
