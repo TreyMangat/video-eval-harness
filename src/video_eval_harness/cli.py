@@ -14,7 +14,7 @@ from rich.table import Table
 from . import __version__
 
 if TYPE_CHECKING:
-    from .adapters import BuildAIAdapter, Ego4DAdapter
+    from .adapters import BuildAIAdapter, Ego4DAdapter, UCF101Adapter
     from .caching import ResponseCache
     from .config import AppSettings, BenchmarkConfig
     from .storage import Storage
@@ -297,9 +297,11 @@ def run_benchmark(
     methods: Optional[str] = typer.Option(None, "--methods", help="Override sweep methods axis (e.g. uniform,keyframe)"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
-    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai, ucf101)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
-    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
+    categories: Optional[str] = typer.Option(None, "--categories", help="Comma-separated category filter (ucf101)"),
+    limit_per_category: int = typer.Option(5, "--limit-per-category", help="Max clips per category (ucf101)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
     name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID (e.g. 'my-experiment')"),
@@ -369,6 +371,12 @@ def run_benchmark(
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
     elif adapter == "buildai":
         dataset_adapter = _make_buildai_adapter(data_dir, path)
+    elif adapter == "ucf101":
+        dataset_adapter = _make_ucf101_adapter(data_dir, path, categories, limit_per_category)
+        if gt_labels is None:
+            gt_labels = dataset_adapter.load_ground_truth()
+            if gt_labels:
+                console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from UCF101 categories")
 
     # Load action vocabulary if provided
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
@@ -524,6 +532,24 @@ def _make_buildai_adapter(data_dir: Optional[str], path: str) -> "BuildAIAdapter
 
     effective_dir = data_dir or path
     return BuildAIAdapter(data_dir=effective_dir)
+
+
+def _make_ucf101_adapter(
+    data_dir: Optional[str],
+    path: str,
+    categories: Optional[str] = None,
+    limit_per_category: int = 5,
+) -> "UCF101Adapter":
+    """Create a UCF101 adapter from CLI args."""
+    from .adapters import UCF101Adapter
+
+    effective_dir = data_dir or path
+    cat_list = [c.strip() for c in categories.split(",")] if categories else None
+    return UCF101Adapter(
+        data_dir=effective_dir,
+        categories=cat_list,
+        limit_per_category=limit_per_category,
+    )
 
 
 def _load_action_vocabulary(vocab_path: str) -> dict:
@@ -1012,9 +1038,11 @@ def sweep(
     window: Optional[float] = typer.Option(None, "--window", "-w"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
-    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai, ucf101)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
-    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
+    categories: Optional[str] = typer.Option(None, "--categories", help="Comma-separated category filter (ucf101)"),
+    limit_per_category: int = typer.Option(5, "--limit-per-category", help="Max clips per category (ucf101)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
     name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID"),
@@ -1025,6 +1053,7 @@ def sweep(
 
     Equivalent to 'run-benchmark --sweep --frames 4,8,16 --methods uniform,keyframe'.
     Use --model-filter to run only a subset of models.
+    Use --adapter ucf101 --data-dir data/UCF101/ for UCF101 with auto ground truth.
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
     Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
@@ -1059,6 +1088,12 @@ def sweep(
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
     elif adapter == "buildai":
         dataset_adapter = _make_buildai_adapter(data_dir, path)
+    elif adapter == "ucf101":
+        dataset_adapter = _make_ucf101_adapter(data_dir, path, categories, limit_per_category)
+        if gt_labels is None:
+            gt_labels = dataset_adapter.load_ground_truth()
+            if gt_labels:
+                console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from UCF101 categories")
 
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
 
@@ -1622,14 +1657,44 @@ def inspect_run(
 
 @app.command()
 def list_videos(
-    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai, ucf101)"),
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for ego4d adapter"),
+    categories: Optional[str] = typer.Option(None, "--categories", help="Comma-separated category filter (ucf101)"),
+    limit_per_category: int = typer.Option(5, "--limit-per-category", help="Max clips per category (ucf101)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
     """List all ingested videos, or scan a dataset adapter's directory."""
     _setup(log_level)
+
+    if adapter == "ucf101":
+        from .adapters import UCF101Adapter
+
+        effective_dir = data_dir or "."
+        cat_list = [c.strip() for c in categories.split(",")] if categories else None
+        ucf = UCF101Adapter(data_dir=effective_dir, categories=cat_list, limit_per_category=limit_per_category)
+        entries = ucf.list_videos()
+        if not entries:
+            console.print("[yellow]No UCF101 videos found.[/yellow]")
+            return
+
+        # Group by category for display
+        cats: dict[str, list] = {}
+        for e in entries:
+            cat = e.metadata["category"] if e.metadata else "unknown"
+            cats.setdefault(cat, []).append(e)
+
+        table = Table(title=f"UCF101 Videos ({len(entries)} clips, {len(cats)} categories)", show_lines=True)
+        table.add_column("Category", style="cyan")
+        table.add_column("Label")
+        table.add_column("Clips", justify="right")
+
+        for cat in sorted(cats):
+            from .adapters.ucf101 import camel_to_label
+            table.add_row(cat, camel_to_label(cat), str(len(cats[cat])))
+        console.print(table)
+        return
 
     if adapter == "buildai":
         from .adapters import BuildAIAdapter

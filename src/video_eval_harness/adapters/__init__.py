@@ -4,6 +4,7 @@ from .directory import DirectoryAdapter
 from .build_ai import BuildAIAdapter
 from .ego4d import Ego4DAdapter
 from .manifest import ManifestAdapter
+from .ucf101 import UCF101Adapter
 
 __all__ = [
     "BaseAdapter",
@@ -13,4 +14,5 @@ __all__ = [
     "BuildAIAdapter",
     "Ego4DAdapter",
     "ManifestAdapter",
+    "UCF101Adapter",
 ]

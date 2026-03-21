@@ -1,0 +1,17 @@
+[
+  {"segment_id": "vid_cooking_30s_fef2c4bbe545_seg0000", "primary_action": "cooking food", "video_id": "vid_cooking_30s_fef2c4bbe545"},
+  {"segment_id": "vid_cooking_30s_fef2c4bbe545_seg0001", "primary_action": "cooking food", "video_id": "vid_cooking_30s_fef2c4bbe545"},
+  {"segment_id": "vid_cutting_e6b342db0675_seg0000", "primary_action": "cutting", "video_id": "vid_cutting_e6b342db0675"},
+  {"segment_id": "vid_cutting_e6b342db0675_seg0001", "primary_action": "cutting", "video_id": "vid_cutting_e6b342db0675"},
+  {"segment_id": "vid_cutting_e6b342db0675_seg0002", "primary_action": "cutting", "video_id": "vid_cutting_e6b342db0675"},
+  {"segment_id": "vid_cutting_e6b342db0675_seg0003", "primary_action": "cutting", "video_id": "vid_cutting_e6b342db0675"},
+  {"segment_id": "vid_action_45s_6af251233085_seg0000", "primary_action": "fighting", "video_id": "vid_action_45s_6af251233085"},
+  {"segment_id": "vid_action_45s_6af251233085_seg0001", "primary_action": "fighting", "video_id": "vid_action_45s_6af251233085"},
+  {"segment_id": "vid_action_45s_6af251233085_seg0002", "primary_action": "walking", "video_id": "vid_action_45s_6af251233085"},
+  {"segment_id": "vid_action_45s_6af251233085_seg0003", "primary_action": "walking", "video_id": "vid_action_45s_6af251233085"},
+  {"segment_id": "vid_action_45s_6af251233085_seg0004", "primary_action": "resting", "video_id": "vid_action_45s_6af251233085"},
+  {"segment_id": "vid_book_0b24bf14c49c_seg0000", "primary_action": "reading", "video_id": "vid_book_0b24bf14c49c"},
+  {"segment_id": "vid_animals_30s_a3850df30521_seg0000", "primary_action": "exploring outdoors", "video_id": "vid_animals_30s_a3850df30521"},
+  {"segment_id": "vid_animals_30s_a3850df30521_seg0001", "primary_action": "exploring outdoors", "video_id": "vid_animals_30s_a3850df30521"},
+  {"segment_id": "vid_animals_30s_a3850df30521_seg0002", "primary_action": "exploring outdoors", "video_id": "vid_animals_30s_a3850df30521"}
+]
