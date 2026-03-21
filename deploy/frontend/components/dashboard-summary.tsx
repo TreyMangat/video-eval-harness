@@ -5,7 +5,7 @@ import {
   getSweepData,
 } from "../lib/analysis";
 import type { RunListItem, RunPayload } from "../lib/types";
-import { DashboardVisuals } from "./dashboard-visuals";
+import { DashboardVisualsClient } from "./dashboard-visuals-client";
 import { TopNav } from "./navigation";
 import { UploadZone } from "./upload-zone";
 
@@ -64,7 +64,7 @@ export function DashboardSummary({
             </div>
           </section>
 
-          <DashboardVisuals
+          <DashboardVisualsClient
             run={run}
             rows={rows}
             costBreakdown={costBreakdown}
@@ -76,8 +76,7 @@ export function DashboardSummary({
           <p className="section-eyebrow">Results</p>
           <h2 className="run-title">Which run should you inspect?</h2>
           <p className="dashboard-copy">
-            Upload one or more videos above to create a benchmark run, or point the dashboard at an
-            existing `artifacts/runs` directory.
+            No benchmark runs found. Upload a video to get started.
           </p>
         </section>
       )}

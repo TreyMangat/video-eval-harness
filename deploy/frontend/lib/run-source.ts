@@ -15,7 +15,12 @@ export async function listRuns(dataDir?: string): Promise<RunListItem[]> {
     }
   }
 
-  return listArtifactRuns(dataDir);
+  try {
+    return await listArtifactRuns(dataDir);
+  } catch (error) {
+    console.error("Failed to load local runs:", error);
+    return [];
+  }
 }
 
 export async function loadRun(
@@ -30,7 +35,12 @@ export async function loadRun(
     }
   }
 
-  return loadArtifactRun(runId, dataDir);
+  try {
+    return await loadArtifactRun(runId, dataDir);
+  } catch (error) {
+    console.error(`Failed to load local run ${runId}:`, error);
+    return null;
+  }
 }
 
 export async function loadSegmentMedia(
@@ -47,5 +57,10 @@ export async function loadSegmentMedia(
     }
   }
 
-  return loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
+  try {
+    return await loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
+  } catch (error) {
+    console.error(`Failed to load segment media for ${runId}/${segmentId}:`, error);
+    return null;
+  }
 }

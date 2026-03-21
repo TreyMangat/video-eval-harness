@@ -17,6 +17,7 @@ type JsonRunBundle = {
   results: LabelResult[];
   summary_overrides: Record<string, Partial<ModelSummary>>;
 };
+const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
 
 async function exists(targetPath: string): Promise<boolean> {
   try {
@@ -104,6 +105,8 @@ async function resolveRunsDir(dataDir?: string): Promise<string> {
     process.env.VBENCH_ARTIFACTS_DIR
       ? path.resolve(process.env.VBENCH_ARTIFACTS_DIR, "runs")
       : null,
+    path.resolve(process.cwd(), "public", "data"),
+    path.resolve(process.cwd(), "..", "..", "data"),
     path.resolve(process.cwd(), "..", "..", "artifacts", "runs"),
     path.resolve(process.cwd(), "artifacts", "runs"),
   ].filter((candidate): candidate is string => Boolean(candidate));
@@ -115,12 +118,13 @@ async function resolveRunsDir(dataDir?: string): Promise<string> {
   }
 
   throw new Error(
-    "Runs directory not found. Set VBENCH_RUNS_DIR to your artifacts/runs directory."
+    "Run data not found. Set VBENCH_RUNS_DIR or include exported JSON files in public/data."
   );
 }
 
 async function resolveArtifactsDir(dataDir?: string): Promise<string> {
-  return path.dirname(await resolveRunsDir(dataDir));
+  const runsDir = await resolveRunsDir(dataDir);
+  return path.basename(runsDir) === "runs" ? path.dirname(runsDir) : runsDir;
 }
 
 function coerceSweepSummary(value: unknown): SweepMetrics | null {
@@ -192,12 +196,21 @@ async function findRunArtifact(
   const runDir = path.join(runsDir, runId);
   const candidates =
     extension === "json"
-      ? [path.join(runDir, `${runId}_results.json`), path.join(runDir, "results.json")]
+      ? [
+          path.join(runDir, `${runId}_results.json`),
+          path.join(runDir, "results.json"),
+          path.join(runsDir, `${runId}_results.json`),
+        ]
       : extension === "csv"
-        ? [path.join(runDir, `${runId}_results.csv`), path.join(runDir, "results.csv")]
+        ? [
+            path.join(runDir, `${runId}_results.csv`),
+            path.join(runDir, "results.csv"),
+            path.join(runsDir, `${runId}_results.csv`),
+          ]
         : [
             path.join(runDir, `${runId}_sweep_summary.json`),
             path.join(runDir, "sweep_summary.json"),
+            path.join(runsDir, `${runId}_sweep_summary.json`),
           ];
 
   for (const candidate of candidates) {
@@ -405,22 +418,39 @@ async function findSegmentManifest(
 export async function listArtifactRuns(dataDir?: string): Promise<RunListItem[]> {
   const runsDir = await resolveRunsDir(dataDir);
   const entries = await fs.readdir(runsDir, { withFileTypes: true });
+  const runIds = new Set<string>();
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const hasArtifact =
+        (await findRunArtifact(entry.name, "json", dataDir)) != null ||
+        (await findRunArtifact(entry.name, "csv", dataDir)) != null;
+      if (hasArtifact) {
+        runIds.add(entry.name);
+      }
+      continue;
+    }
+
+    const match = entry.name.match(FLAT_RUN_FILE_PATTERN);
+    if (match) {
+      runIds.add(match[1]);
+    }
+  }
+
   const runs = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        const payload = await loadArtifactRun(entry.name, dataDir);
-        if (!payload) {
-          return null;
-        }
-        return {
-          run_id: payload.run_id,
-          created_at: payload.config.created_at,
-          models: payload.models,
-          prompt_version: payload.config.prompt_version,
-          video_ids: payload.config.video_ids,
-        };
-      })
+    [...runIds].map(async (runId) => {
+      const payload = await loadArtifactRun(runId, dataDir);
+      if (!payload) {
+        return null;
+      }
+      return {
+        run_id: payload.run_id,
+        created_at: payload.config.created_at,
+        models: payload.models,
+        prompt_version: payload.config.prompt_version,
+        video_ids: payload.config.video_ids,
+      };
+    })
   );
 
   return runs

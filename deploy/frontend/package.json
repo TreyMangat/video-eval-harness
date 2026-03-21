@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node ./scripts/prepare-static-data.mjs && next build",
     "start": "next start",
     "lint": "next lint"
   },
