@@ -74,24 +74,24 @@
   "llm_agreement": {
     "gemini-3-flash": {
       "gemini-3-flash": 1.0,
-      "gpt-5.4-mini": 0.86,
-      "qwen3.5-27b": 0.9333333333333332
+      "gpt-5.4-mini": 0.8633333333333333,
+      "qwen3.5-27b": 0.93
     },
     "gpt-5.4-mini": {
-      "gemini-3-flash": 0.86,
+      "gemini-3-flash": 0.8633333333333333,
       "gpt-5.4-mini": 1.0,
-      "qwen3.5-27b": 0.7000000000000001
+      "qwen3.5-27b": 0.82
     },
     "qwen3.5-27b": {
-      "gemini-3-flash": 0.9333333333333332,
-      "gpt-5.4-mini": 0.7000000000000001,
+      "gemini-3-flash": 0.93,
+      "gpt-5.4-mini": 0.82,
       "qwen3.5-27b": 1.0
     }
   },
   "llm_accuracy": null,
   "judge_stats": {
     "calls": 9,
-    "total_cost_usd": 0.002915
+    "total_cost_usd": 0.002956
   },
   "summaries": {
     "gemini-3-flash": {
@@ -104,7 +104,9 @@
       "median_latency_ms": 4473.391900000024,
       "p95_latency_ms": 4742.895639999824,
       "total_estimated_cost": 0.009049,
-      "avg_confidence": 0.9499999999999998
+      "avg_confidence": 0.9499999999999998,
+      "exact_match_rate": 0.3333333333333333,
+      "fuzzy_match_rate": 1.0
     },
     "gpt-5.4-mini": {
       "model_name": "gpt-5.4-mini",
@@ -116,7 +118,9 @@
       "median_latency_ms": 2156.44759999941,
       "p95_latency_ms": 2251.6900100000385,
       "total_estimated_cost": 0.013151250000000001,
-      "avg_confidence": 0.9233333333333333
+      "avg_confidence": 0.9233333333333333,
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 1.0
     },
     "qwen3.5-27b": {
       "model_name": "qwen3.5-27b",
@@ -128,12 +132,33 @@
       "median_latency_ms": 14691.279900000154,
       "p95_latency_ms": 17824.6103700003,
       "total_estimated_cost": 0.007870005,
-      "avg_confidence": 0.9
+      "avg_confidence": 0.9,
+      "exact_match_rate": 0.3333333333333333,
+      "fuzzy_match_rate": 1.0
     }
   },
   "sweep_summary": null,
   "cost_estimate_usd": 0.03007,
-  "accuracy_by_model": null,
+  "accuracy_by_model": {
+    "gemini-3-flash": {
+      "exact_match_rate": 0.3333333333333333,
+      "fuzzy_match_rate": 1.0,
+      "mean_similarity": 0.9333333333333332,
+      "evaluated_segments": 3
+    },
+    "gpt-5.4-mini": {
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 1.0,
+      "mean_similarity": 0.7666666666666666,
+      "evaluated_segments": 3
+    },
+    "qwen3.5-27b": {
+      "exact_match_rate": 0.3333333333333333,
+      "fuzzy_match_rate": 1.0,
+      "mean_similarity": 0.9333333333333332,
+      "evaluated_segments": 3
+    }
+  },
   "results": [
     {
       "run_id": "run_20260321_post-synonym-fix_e998",

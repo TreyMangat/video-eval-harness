@@ -191,6 +191,58 @@
       "qwen3.5-vl": 1.0
     }
   },
+  "llm_agreement": {
+    "gemini-3.1-pro": {
+      "gemini-3.1-pro": 1.0,
+      "gpt-5.4": 0.754,
+      "llama-4-maverick": 0.608,
+      "qwen3.5-vl": 0.6930000000000001
+    },
+    "gpt-5.4": {
+      "gemini-3.1-pro": 0.754,
+      "gpt-5.4": 1.0,
+      "llama-4-maverick": 0.6179999999999999,
+      "qwen3.5-vl": 0.7599999999999999
+    },
+    "llama-4-maverick": {
+      "gemini-3.1-pro": 0.608,
+      "gpt-5.4": 0.6179999999999999,
+      "llama-4-maverick": 1.0,
+      "qwen3.5-vl": 0.6945
+    },
+    "qwen3.5-vl": {
+      "gemini-3.1-pro": 0.6930000000000001,
+      "gpt-5.4": 0.7599999999999999,
+      "llama-4-maverick": 0.6945,
+      "qwen3.5-vl": 1.0
+    }
+  },
+  "llm_accuracy": {
+    "gemini-3.1-pro": {
+      "llm_accuracy": 0.775,
+      "llm_mean_similarity": 0.82775,
+      "evaluated_segments": 40
+    },
+    "gpt-5.4": {
+      "llm_accuracy": 0.8,
+      "llm_mean_similarity": 0.8440000000000001,
+      "evaluated_segments": 40
+    },
+    "llama-4-maverick": {
+      "llm_accuracy": 0.65,
+      "llm_mean_similarity": 0.7294999999999999,
+      "evaluated_segments": 40
+    },
+    "qwen3.5-vl": {
+      "llm_accuracy": 0.7297297297297297,
+      "llm_mean_similarity": 0.8100000000000002,
+      "evaluated_segments": 37
+    }
+  },
+  "judge_stats": {
+    "calls": 277,
+    "total_cost_usd": 0.077308
+  },
   "summaries": {
     "gemini-3.1-pro": {
       "model_name": "gemini-3.1-pro",
@@ -203,8 +255,8 @@
       "p95_latency_ms": null,
       "total_estimated_cost": null,
       "avg_confidence": 0.9545000000000001,
-      "exact_match_rate": 0.038461538461538464,
-      "fuzzy_match_rate": 0.34615384615384615
+      "exact_match_rate": 0.4,
+      "fuzzy_match_rate": 0.825
     },
     "gpt-5.4": {
       "model_name": "gpt-5.4",
@@ -217,8 +269,8 @@
       "p95_latency_ms": null,
       "total_estimated_cost": null,
       "avg_confidence": 0.9235,
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.38461538461538464
+      "exact_match_rate": 0.425,
+      "fuzzy_match_rate": 0.825
     },
     "llama-4-maverick": {
       "model_name": "llama-4-maverick",
@@ -231,8 +283,8 @@
       "p95_latency_ms": null,
       "total_estimated_cost": null,
       "avg_confidence": 0.91625,
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.34615384615384615
+      "exact_match_rate": 0.275,
+      "fuzzy_match_rate": 0.625
     },
     "qwen3.5-vl": {
       "model_name": "qwen3.5-vl",
@@ -245,8 +297,8 @@
       "p95_latency_ms": 50433.639399999265,
       "total_estimated_cost": 0.04826426,
       "avg_confidence": 0.9354054054054056,
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.4166666666666667
+      "exact_match_rate": 0.32432432432432434,
+      "fuzzy_match_rate": 0.8378378378378378
     }
   },
   "sweep_summary": {
@@ -453,28 +505,28 @@
   "cost_estimate_usd": 0.048264,
   "accuracy_by_model": {
     "gemini-3.1-pro": {
-      "exact_match_rate": 0.038461538461538464,
-      "fuzzy_match_rate": 0.34615384615384615,
-      "mean_similarity": 0.2692307692307693,
-      "evaluated_segments": 26
+      "exact_match_rate": 0.4,
+      "fuzzy_match_rate": 0.825,
+      "mean_similarity": 0.7674999999999998,
+      "evaluated_segments": 40
     },
     "gpt-5.4": {
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.38461538461538464,
-      "mean_similarity": 0.30000000000000004,
-      "evaluated_segments": 26
+      "exact_match_rate": 0.425,
+      "fuzzy_match_rate": 0.825,
+      "mean_similarity": 0.7524999999999997,
+      "evaluated_segments": 40
     },
     "llama-4-maverick": {
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.34615384615384615,
-      "mean_similarity": 0.26538461538461544,
-      "evaluated_segments": 26
+      "exact_match_rate": 0.275,
+      "fuzzy_match_rate": 0.625,
+      "mean_similarity": 0.5574999999999999,
+      "evaluated_segments": 40
     },
     "qwen3.5-vl": {
-      "exact_match_rate": 0.0,
-      "fuzzy_match_rate": 0.4166666666666667,
-      "mean_similarity": 0.3333333333333333,
-      "evaluated_segments": 24
+      "exact_match_rate": 0.32432432432432434,
+      "fuzzy_match_rate": 0.8378378378378378,
+      "mean_similarity": 0.7486486486486483,
+      "evaluated_segments": 37
     }
   },
   "results": [

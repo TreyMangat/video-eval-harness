@@ -205,7 +205,9 @@
       "median_latency_ms": 17866.658700002517,
       "p95_latency_ms": 26279.874659999587,
       "total_estimated_cost": 0.8677160000000002,
-      "avg_confidence": 0.9545000000000001
+      "avg_confidence": 0.9545000000000001,
+      "exact_match_rate": 0.4,
+      "fuzzy_match_rate": 0.825
     },
     "gpt-5.4": {
       "model_name": "gpt-5.4",
@@ -217,7 +219,9 @@
       "median_latency_ms": 4681.7090999993525,
       "p95_latency_ms": 6660.240920001161,
       "total_estimated_cost": 0.47317499999999996,
-      "avg_confidence": 0.9235
+      "avg_confidence": 0.9235,
+      "exact_match_rate": 0.425,
+      "fuzzy_match_rate": 0.825
     },
     "llama-4-maverick": {
       "model_name": "llama-4-maverick",
@@ -229,7 +233,9 @@
       "median_latency_ms": 3934.05415000052,
       "p95_latency_ms": 6606.581414999528,
       "total_estimated_cost": 0.06327480000000002,
-      "avg_confidence": 0.91625
+      "avg_confidence": 0.91625,
+      "exact_match_rate": 0.275,
+      "fuzzy_match_rate": 0.625
     },
     "qwen3.5-vl": {
       "model_name": "qwen3.5-vl",
@@ -241,7 +247,9 @@
       "median_latency_ms": 24985.07979999704,
       "p95_latency_ms": 45222.68247999964,
       "total_estimated_cost": 0.25937403,
-      "avg_confidence": 0.9370588235294117
+      "avg_confidence": 0.9370588235294117,
+      "exact_match_rate": 0.3235294117647059,
+      "fuzzy_match_rate": 0.8529411764705882
     }
   },
   "sweep_summary": {
@@ -446,7 +454,32 @@
     }
   },
   "cost_estimate_usd": 1.66354,
-  "accuracy_by_model": null,
+  "accuracy_by_model": {
+    "gemini-3.1-pro": {
+      "exact_match_rate": 0.4,
+      "fuzzy_match_rate": 0.825,
+      "mean_similarity": 0.7674999999999998,
+      "evaluated_segments": 40
+    },
+    "gpt-5.4": {
+      "exact_match_rate": 0.425,
+      "fuzzy_match_rate": 0.825,
+      "mean_similarity": 0.7524999999999997,
+      "evaluated_segments": 40
+    },
+    "llama-4-maverick": {
+      "exact_match_rate": 0.275,
+      "fuzzy_match_rate": 0.625,
+      "mean_similarity": 0.5574999999999999,
+      "evaluated_segments": 40
+    },
+    "qwen3.5-vl": {
+      "exact_match_rate": 0.3235294117647059,
+      "fuzzy_match_rate": 0.8529411764705882,
+      "mean_similarity": 0.764705882352941,
+      "evaluated_segments": 34
+    }
+  },
   "results": [
     {
       "run_id": "run_20260321_frontier-full-suite_sweep_1e0e",
