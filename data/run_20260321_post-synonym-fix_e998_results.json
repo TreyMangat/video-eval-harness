@@ -71,6 +71,28 @@
       "qwen3.5-27b": 1.0
     }
   },
+  "llm_agreement": {
+    "gemini-3-flash": {
+      "gemini-3-flash": 1.0,
+      "gpt-5.4-mini": 0.86,
+      "qwen3.5-27b": 0.9333333333333332
+    },
+    "gpt-5.4-mini": {
+      "gemini-3-flash": 0.86,
+      "gpt-5.4-mini": 1.0,
+      "qwen3.5-27b": 0.7000000000000001
+    },
+    "qwen3.5-27b": {
+      "gemini-3-flash": 0.9333333333333332,
+      "gpt-5.4-mini": 0.7000000000000001,
+      "qwen3.5-27b": 1.0
+    }
+  },
+  "llm_accuracy": null,
+  "judge_stats": {
+    "calls": 9,
+    "total_cost_usd": 0.002915
+  },
   "summaries": {
     "gemini-3-flash": {
       "model_name": "gemini-3-flash",

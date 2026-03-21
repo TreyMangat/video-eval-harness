@@ -670,8 +670,12 @@ def _print_ground_truth_accuracy(
 def _run_llm_judge(
     results: list,
     ground_truth_path: Optional[str] = None,
-) -> None:
-    """Run LLM-as-judge evaluation and print results."""
+) -> dict:
+    """Run LLM-as-judge evaluation and print results.
+
+    Returns {"llm_agreement": ..., "llm_accuracy": ..., "judge_stats": ...}
+    so callers can pass the data to export_results().
+    """
     from .config import get_settings
     from .evaluation.llm_judge import LLMJudge
     from .evaluation.metrics import compute_agreement_matrix_llm, compute_ground_truth_accuracy_llm
@@ -680,12 +684,14 @@ def _run_llm_judge(
     settings = get_settings()
     if not settings.openrouter_api_key:
         console.print("[red]LLM judge requires OPENROUTER_API_KEY.[/red]")
-        return
+        return {"llm_agreement": None, "llm_accuracy": None, "judge_stats": None}
 
     provider = OpenRouterProvider(api_key=settings.openrouter_api_key)
     judge = LLMJudge(provider)
 
     models = sorted({r.model_name for r in results})
+    llm_agreement = None
+    llm_accuracy = None
 
     # Pairwise agreement via LLM
     if len(models) > 1:
@@ -733,6 +739,8 @@ def _run_llm_judge(
         f"\n  Judge stats: [cyan]{stats['calls']}[/cyan] calls, "
         f"[cyan]${stats['total_cost_usd']:.4f}[/cyan] total cost"
     )
+
+    return {"llm_agreement": llm_agreement, "llm_accuracy": llm_accuracy, "judge_stats": stats}
 
 
 def _run_single(
@@ -893,12 +901,13 @@ def _run_single(
     if gt_labels:
         _print_ground_truth_accuracy(results, gt_labels)
 
+    judge_data: dict = {}
     if use_llm_judge:
-        _run_llm_judge(results)
+        judge_data = _run_llm_judge(results)
 
     # Export
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config, **judge_data)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -1050,11 +1059,12 @@ def _run_sweep(
     if gt_labels:
         _print_ground_truth_accuracy(results, gt_labels)
 
+    judge_data: dict = {}
     if use_llm_judge:
-        _run_llm_judge(results)
+        judge_data = _run_llm_judge(results)
 
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config, **judge_data)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -1139,17 +1149,20 @@ def evaluate(
         print_run_summary(results, run_id)
 
     # LLM-as-judge evaluation
+    judge_data: dict = {}
     if llm_judge:
-        _run_llm_judge(results, ground_truth)
+        judge_data = _run_llm_judge(results, ground_truth)
 
     if export:
         run_cfg = storage.get_run(run_id)
         dn = run_cfg.display_name if run_cfg else None
         gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
         run_dir = storage.run_dir(run_id)
-        paths = export_results(results, run_dir, run_id, display_name=dn, gt_labels=gt_labels, run_config=run_cfg)
+        paths = export_results(results, run_dir, run_id, display_name=dn, gt_labels=gt_labels, run_config=run_cfg, **judge_data)
         for p in paths:
             console.print(f"  Exported: [cyan]{p}[/cyan]")
+        if judge_data.get("llm_agreement"):
+            console.print("  Updated JSON export with LLM judge scores.")
 
 
 @app.command()

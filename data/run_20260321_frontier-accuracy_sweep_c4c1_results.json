@@ -191,6 +191,9 @@
       "qwen3.5-vl": 1.0
     }
   },
+  "llm_agreement": null,
+  "llm_accuracy": null,
+  "judge_stats": null,
   "summaries": {
     "gemini-3.1-pro": {
       "model_name": "gemini-3.1-pro",

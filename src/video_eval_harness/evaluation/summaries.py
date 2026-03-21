@@ -234,11 +234,15 @@ def export_results(
     display_name: str | None = None,
     gt_labels: list[GroundTruthLabel] | None = None,
     run_config: RunConfig | None = None,
+    llm_agreement: dict[str, dict[str, float]] | None = None,
+    llm_accuracy: dict[str, dict[str, float]] | None = None,
+    judge_stats: dict | None = None,
 ) -> list[Path]:
     """Export results to CSV, Parquet, and/or JSON.
 
     The JSON export includes the full envelope the dashboard needs:
     agreement matrix, model summaries, segments, config, and sweep data.
+    If LLM judge data is provided, it's included alongside string-matching scores.
 
     Returns list of exported file paths.
     """
@@ -267,6 +271,9 @@ def export_results(
         json_path = output_dir / f"{run_id}_results.json"
         envelope = _build_json_envelope(
             results, run_id, display_name, gt_labels, run_config, df,
+            llm_agreement=llm_agreement,
+            llm_accuracy=llm_accuracy,
+            judge_stats=judge_stats,
         )
         import json as _json
         json_path.write_text(_json.dumps(envelope, indent=2), encoding="utf-8")
@@ -283,6 +290,9 @@ def _build_json_envelope(
     gt_labels: list[GroundTruthLabel] | None,
     run_config: RunConfig | None,
     df: pd.DataFrame,
+    llm_agreement: dict[str, dict[str, float]] | None = None,
+    llm_accuracy: dict[str, dict[str, float]] | None = None,
+    judge_stats: dict | None = None,
 ) -> dict:
     """Build the full JSON envelope the dashboard expects."""
     import json as _json
@@ -386,6 +396,9 @@ def _build_json_envelope(
         "models": models,
         "segments": segments,
         "agreement": agreement,
+        "llm_agreement": llm_agreement,
+        "llm_accuracy": llm_accuracy,
+        "judge_stats": judge_stats,
         "summaries": summaries_with_accuracy,
         "sweep_summary": sweep_summary,
         "cost_estimate_usd": round(total_cost, 6) if total_cost > 0 else None,
