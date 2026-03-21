@@ -248,19 +248,10 @@ class LabelingRunner:
         model_cfg = self.models[model_name]
         provider = self.providers[model_cfg.provider]
 
-        # Auto-upgrade prompt for Claude models to improve agreement
-        effective_prompt_version = self.prompt_version
-        if (
-            self.prompt_version == "action_label"
-            and "claude" in model_cfg.model_id.lower()
-            and "claude_action_label" in self.prompt_builder.templates
-        ):
-            effective_prompt_version = "claude_action_label"
-
         # Build prompt
         num_frames = frames.num_frames if frames else 0
         prompt = self.prompt_builder.build(
-            effective_prompt_version,
+            self.prompt_version,
             segment,
             num_frames=num_frames,
         )

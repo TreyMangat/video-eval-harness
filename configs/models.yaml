@@ -37,14 +37,15 @@ models:
     supports_video: false
     notes: "Native vision-language model, hybrid MoE architecture activating 17B params"
 
-  claude-sonnet-4.6:
-    model_id: "anthropic/claude-sonnet-4.6"
+  llama-4-maverick:
+    model_id: "meta-llama/llama-4-maverick"
     provider: openrouter
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
     supports_video: false
-    notes: "Strong multimodal reasoning from Anthropic"
+    tier: frontier
+    notes: "Meta open-weight frontier vision model, 400B+ MoE"
 
   # ── Optional: Cheaper/faster models for iteration ──
   # Uncomment these when you want to test pipeline throughput or reduce cost

@@ -12,7 +12,7 @@ models:
   - gemini-3.1-pro
   - gpt-5.4
   - qwen3.5-vl
-  - claude-sonnet-4.6
+  - llama-4-maverick
 
 # Prompt template to use (concise, rich, strict_json)
 prompt_version: "action_label"
