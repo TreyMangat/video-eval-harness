@@ -14,7 +14,7 @@ from rich.table import Table
 from . import __version__
 
 if TYPE_CHECKING:
-    from .adapters import Ego4DAdapter
+    from .adapters import BuildAIAdapter, Ego4DAdapter
     from .caching import ResponseCache
     from .config import AppSettings, BenchmarkConfig
     from .storage import Storage
@@ -297,8 +297,9 @@ def run_benchmark(
     methods: Optional[str] = typer.Option(None, "--methods", help="Override sweep methods axis (e.g. uniform,keyframe)"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
-    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
@@ -311,6 +312,7 @@ def run_benchmark(
     Use --model-filter to run only a subset of models from the config.
     Use --ground-truth to evaluate against known labels.
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
+    Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
     """
     _setup(log_level)
@@ -354,13 +356,15 @@ def run_benchmark(
 
     # Load ground truth labels if provided (or auto-load from adapter)
     gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
-    ego4d_adapter = None
+    dataset_adapter = None
     if adapter == "ego4d":
-        ego4d_adapter = _make_ego4d_adapter(manifest, path)
+        dataset_adapter = _make_ego4d_adapter(manifest, path)
         if gt_labels is None:
-            gt_labels = ego4d_adapter.load_ground_truth()
+            gt_labels = dataset_adapter.load_ground_truth()
             if gt_labels:
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
+    elif adapter == "buildai":
+        dataset_adapter = _make_buildai_adapter(data_dir, path)
 
     # Load action vocabulary if provided
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
@@ -369,13 +373,13 @@ def run_benchmark(
     if sweep and sweep_cfg is not None:
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            dry_run, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
+            dry_run, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
             vocab_context,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-            num_frames, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
+            num_frames, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
             vocab_context,
         )
 
@@ -388,15 +392,15 @@ def _ingest_videos(
     probe_video,
     generate_video_id,
     VideoMetadata,
-    ego4d_adapter: Optional[object] = None,
+    dataset_adapter: Optional[object] = None,
 ) -> tuple[list, list]:
     """Ingest videos using the appropriate adapter.
 
     Returns (videos, entries) where videos is a list of VideoMetadata and
     entries is the raw VideoEntry list from the adapter.
     """
-    if ego4d_adapter is not None:
-        entries = ego4d_adapter.list_videos()
+    if dataset_adapter is not None:
+        entries = dataset_adapter.list_videos()
     else:
         from .adapters import DirectoryAdapter, LocalFileAdapter
 
@@ -448,6 +452,14 @@ def _make_ego4d_adapter(manifest: Optional[str], path: str) -> "Ego4DAdapter":
         console.print("[red]--adapter ego4d requires --manifest path/to/ego4d.json[/red]")
         raise typer.Exit(1)
     return Ego4DAdapter(manifest_path=manifest, video_dir=path)
+
+
+def _make_buildai_adapter(data_dir: Optional[str], path: str) -> "BuildAIAdapter":
+    """Create a Build.ai adapter from CLI args."""
+    from .adapters import BuildAIAdapter
+
+    effective_dir = data_dir or path
+    return BuildAIAdapter(data_dir=effective_dir)
 
 
 def _load_action_vocabulary(vocab_path: str) -> dict:
@@ -542,7 +554,7 @@ def _run_single(
     log_level: str,
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
-    ego4d_adapter: Optional[object] = None,
+    dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
 ) -> None:
     """Standard single-config benchmark run."""
@@ -583,7 +595,7 @@ def _run_single(
 
     # 1. Ingest
     console.rule("[bold]Step 1: Ingest[/bold]")
-    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, ego4d_adapter)
+    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, dataset_adapter)
 
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
@@ -688,7 +700,7 @@ def _run_sweep(
     log_level: str,
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
-    ego4d_adapter: Optional[object] = None,
+    dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
@@ -734,7 +746,7 @@ def _run_sweep(
 
     # 1. Ingest
     console.rule("[bold]Step 1: Ingest[/bold]")
-    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, ego4d_adapter)
+    videos, entries = _ingest_videos(path, storage, probe_video, generate_video_id, VideoMetadata, dataset_adapter)
 
     # 2. Segment
     console.rule("[bold]Step 2: Segment[/bold]")
@@ -905,8 +917,9 @@ def sweep(
     window: Optional[float] = typer.Option(None, "--window", "-w"),
     model_filter: Optional[str] = typer.Option(None, "--model-filter", help="Comma-separated model subset (e.g. gemini-3-flash,qwen3.5-27b)"),
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
-    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
@@ -916,6 +929,7 @@ def sweep(
     Equivalent to 'run-benchmark --sweep --frames 4,8,16 --methods uniform,keyframe'.
     Use --model-filter to run only a subset of models.
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
+    Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
     """
     _setup(log_level)
@@ -937,19 +951,21 @@ def sweep(
 
     filter_list = [m.strip() for m in model_filter.split(",")] if model_filter else None
     gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
-    ego4d_adapter = None
+    dataset_adapter = None
     if adapter == "ego4d":
-        ego4d_adapter = _make_ego4d_adapter(manifest, path)
+        dataset_adapter = _make_ego4d_adapter(manifest, path)
         if gt_labels is None:
-            gt_labels = ego4d_adapter.load_ground_truth()
+            gt_labels = dataset_adapter.load_ground_truth()
             if gt_labels:
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
+    elif adapter == "buildai":
+        dataset_adapter = _make_buildai_adapter(data_dir, path)
 
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
 
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
-        dry_run, artifacts_dir, log_level, filter_list, gt_labels, ego4d_adapter,
+        dry_run, artifacts_dir, log_level, filter_list, gt_labels, dataset_adapter,
         vocab_context,
     )
 
@@ -1199,11 +1215,67 @@ def inspect_run(
 
 @app.command()
 def list_videos(
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
+    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
+    manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for ego4d adapter"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
-    """List all ingested videos."""
+    """List all ingested videos, or scan a dataset adapter's directory."""
     _setup(log_level)
+
+    if adapter == "buildai":
+        from .adapters import BuildAIAdapter
+
+        effective_dir = data_dir or "."
+        ba = BuildAIAdapter(data_dir=effective_dir)
+        entries = ba.list_videos()
+        if not entries:
+            console.print("[yellow]No videos found in Build.ai data directory.[/yellow]")
+            return
+
+        table = Table(title=f"Build.ai Videos ({len(entries)})", show_lines=True)
+        table.add_column("Video ID", style="cyan")
+        table.add_column("Path")
+        table.add_column("Metadata")
+
+        for e in entries:
+            meta_str = ""
+            if e.metadata:
+                parts = []
+                if "factory_id" in e.metadata:
+                    parts.append(e.metadata["factory_id"])
+                if "worker_id" in e.metadata:
+                    parts.append(e.metadata["worker_id"])
+                if "duration_sec" in e.metadata:
+                    parts.append(f"{e.metadata['duration_sec']:.1f}s")
+                meta_str = ", ".join(parts)
+            table.add_row(e.video_id or "-", str(e.path.name), meta_str)
+        console.print(table)
+        return
+
+    if adapter == "ego4d":
+        from .adapters import Ego4DAdapter
+
+        if not manifest:
+            console.print("[red]--adapter ego4d requires --manifest[/red]")
+            raise typer.Exit(1)
+        effective_dir = data_dir or "."
+        ego = Ego4DAdapter(manifest_path=manifest, video_dir=effective_dir)
+        entries = ego.list_videos()
+        if not entries:
+            console.print("[yellow]No Ego4D videos found locally.[/yellow]")
+            return
+
+        table = Table(title=f"Ego4D Videos ({len(entries)})", show_lines=True)
+        table.add_column("Video ID", style="cyan")
+        table.add_column("Path")
+        for e in entries:
+            table.add_row(e.video_id or "-", str(e.path.name))
+        console.print(table)
+        return
+
+    # Default: list from storage
     from .storage import Storage
 
     storage = Storage(artifacts_dir)
@@ -1229,6 +1301,43 @@ def list_videos(
             f"{v.fps:.1f}",
         )
     console.print(table)
+
+
+@app.command()
+def download_dataset(
+    dataset: str = typer.Argument(..., help="Dataset to download (buildai-10k)"),
+    output: str = typer.Option("./data", "--output", "-o", help="Output directory"),
+    factory: str = typer.Option("factory_001", "--factory", help="Factory ID to download"),
+    worker: str = typer.Option("worker_001", "--worker", help="Worker ID to download"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Download a dataset shard for benchmarking.
+
+    Downloads a single worker's worth of clips (~50-100 videos) from the
+    specified dataset. Use this to get started without downloading the
+    full dataset.
+    """
+    _setup(log_level)
+
+    if dataset != "buildai-10k":
+        console.print(f"[red]Unknown dataset: {dataset}. Available: buildai-10k[/red]")
+        raise typer.Exit(1)
+
+    from .adapters.build_ai import download_buildai_shard
+
+    console.print(f"Downloading {factory}/{worker} from builddotai/Egocentric-10K ...")
+    try:
+        tar_path = download_buildai_shard(
+            output_dir=output,
+            factory=factory,
+            worker=worker,
+        )
+        console.print(f"  [green]OK[/green] Downloaded to {tar_path}")
+        console.print(f"\nTo list videos: vbench list-videos --adapter buildai --data-dir {output}")
+        console.print(f"To benchmark:   vbench run-benchmark {output} --adapter buildai --data-dir {output}")
+    except Exception as e:
+        console.print(f"[red]Download failed: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()
