@@ -178,8 +178,9 @@ def download_buildai_shard(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # The dataset uses pattern: factory_XXX/workers/worker_XXX/part00.tar
-    shard_path = f"{factory}/workers/{worker}/part00.tar"
+    # Tar filenames use a no-underscore prefix: factory001_worker001_part00.tar
+    prefix = f"{factory.replace('_', '')}_{worker.replace('_', '')}"
+    shard_path = f"{factory}/workers/{worker}/{prefix}_part00.tar"
 
     logger.info("Downloading %s from %s ...", shard_path, repo_id)
     local_path = hf_hub_download(
