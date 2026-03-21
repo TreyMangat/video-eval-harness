@@ -16,6 +16,7 @@ type CsvRecord = Record<string, string>;
 type JsonRunBundle = {
   results: LabelResult[];
   summary_overrides: Record<string, Partial<ModelSummary>>;
+  agreement: Record<string, Record<string, number>> | null;
 };
 const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
 
@@ -272,6 +273,35 @@ function parseSummaryOverrides(raw: unknown): Record<string, Partial<ModelSummar
   return overrides;
 }
 
+function coerceAgreementMatrix(
+  raw: unknown
+): Record<string, Record<string, number>> | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const matrix: Record<string, Record<string, number>> = {};
+
+  for (const [rowModel, rowValue] of Object.entries(raw as Record<string, unknown>)) {
+    if (!rowValue || typeof rowValue !== "object") {
+      continue;
+    }
+
+    const parsedRow: Record<string, number> = {};
+    for (const [columnModel, score] of Object.entries(rowValue as Record<string, unknown>)) {
+      if (typeof score === "number" && Number.isFinite(score)) {
+        parsedRow[columnModel] = score;
+      }
+    }
+
+    if (Object.keys(parsedRow).length > 0) {
+      matrix[rowModel] = parsedRow;
+    }
+  }
+
+  return Object.keys(matrix).length > 0 ? matrix : null;
+}
+
 async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRunBundle | null> {
   const artifactPath = await findRunArtifact(runId, "json", dataDir);
   if (!artifactPath) {
@@ -283,6 +313,7 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
     return {
       results: raw.map((record) => parseLabelResultRecord(record as Record<string, unknown>)),
       summary_overrides: {},
+      agreement: null,
     };
   }
   if (!raw || typeof raw !== "object") {
@@ -297,6 +328,7 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
   return {
     results,
     summary_overrides: parseSummaryOverrides(record),
+    agreement: coerceAgreementMatrix(record.agreement),
   };
 }
 
@@ -321,6 +353,7 @@ async function loadRunResults(
   return {
     results: await loadCsvResults(runId, dataDir),
     summary_overrides: {},
+    agreement: null,
   };
 }
 
@@ -471,7 +504,17 @@ export async function loadArtifactRun(
   }
 
   const sweepSummary = await loadSweepSummary(runId, dataDir);
-  return buildRunPayload(runId, runData.results, sweepSummary, runData.summary_overrides);
+  const payload = buildRunPayload(
+    runId,
+    runData.results,
+    sweepSummary,
+    runData.summary_overrides
+  );
+
+  return {
+    ...payload,
+    agreement: runData.agreement ?? payload.agreement,
+  };
 }
 
 export async function loadArtifactSegmentMedia(

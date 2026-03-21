@@ -470,6 +470,9 @@ export function selectSampleSegments(
   limit = 3
 ): SegmentComparisonSample[] {
   const filteredResults = filterResultsByVariant(run.results, variantLabel);
+  const preferredAgreementMatrix =
+    (variantLabel ? run.sweep?.agreement_by_variant?.[variantLabel] : null) ??
+    (Object.keys(run.agreement).length > 0 ? run.agreement : null);
 
   return run.segments
     .map((segment) => {
@@ -486,7 +489,9 @@ export function selectSampleSegments(
       return {
         segment,
         results: segmentResults,
-        mean_agreement: averageOffDiagonal(computeAgreementMatrix(segmentResults)),
+        mean_agreement: averageOffDiagonal(
+          preferredAgreementMatrix ?? computeAgreementMatrix(segmentResults)
+        ),
         variant_label: variantLabel,
       };
     })
