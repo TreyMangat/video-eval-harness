@@ -9,13 +9,15 @@ from rich.console import Console
 from rich.table import Table
 
 from ..log import get_logger
-from ..schemas import GroundTruthLabel, SegmentLabelResult
+from ..schemas import GroundTruthLabel, RunConfig, SegmentLabelResult
 from .metrics import (
     compute_agreement_matrix,
     compute_ground_truth_accuracy,
     compute_model_summary,
     compute_sweep_metrics,
 )
+
+from dataclasses import asdict
 
 logger = get_logger(__name__)
 console = Console()
@@ -231,10 +233,12 @@ def export_results(
     formats: list[str] | None = None,
     display_name: str | None = None,
     gt_labels: list[GroundTruthLabel] | None = None,
+    run_config: RunConfig | None = None,
 ) -> list[Path]:
     """Export results to CSV, Parquet, and/or JSON.
 
-    If gt_labels is provided, accuracy_by_model is included in the JSON export.
+    The JSON export includes the full envelope the dashboard needs:
+    agreement matrix, model summaries, segments, config, and sweep data.
 
     Returns list of exported file paths.
     """
@@ -260,31 +264,131 @@ def export_results(
         logger.info(f"Exported Parquet: {parquet_path}")
 
     if "json" in formats:
-        import json as _json
-
         json_path = output_dir / f"{run_id}_results.json"
-        records = _json.loads(df.to_json(orient="records"))
-
-        # Compute total cost from all results
-        total_cost = sum(
-            r.estimated_cost for r in results
-            if r.estimated_cost is not None
+        envelope = _build_json_envelope(
+            results, run_id, display_name, gt_labels, run_config, df,
         )
-
-        # Compute accuracy if ground truth labels are available
-        accuracy_by_model = None
-        if gt_labels:
-            accuracy_by_model = compute_ground_truth_accuracy(results, gt_labels)
-
-        envelope = {
-            "run_id": run_id,
-            "display_name": display_name,
-            "cost_estimate_usd": round(total_cost, 6) if total_cost > 0 else None,
-            "accuracy_by_model": accuracy_by_model,
-            "results": records,
-        }
+        import json as _json
         json_path.write_text(_json.dumps(envelope, indent=2), encoding="utf-8")
         exported.append(json_path)
         logger.info(f"Exported JSON: {json_path}")
 
     return exported
+
+
+def _build_json_envelope(
+    results: list[SegmentLabelResult],
+    run_id: str,
+    display_name: str | None,
+    gt_labels: list[GroundTruthLabel] | None,
+    run_config: RunConfig | None,
+    df: pd.DataFrame,
+) -> dict:
+    """Build the full JSON envelope the dashboard expects."""
+    import json as _json
+
+    models = sorted({r.model_name for r in results})
+    video_ids = sorted({r.video_id for r in results})
+
+    # Derive config — use RunConfig if available, else infer from results
+    timestamps = [r.timestamp for r in results if r.timestamp]
+    created_at = (
+        run_config.created_at if run_config
+        else (min(timestamps) if timestamps else "")
+    )
+    prompt_version = (
+        run_config.prompt_version if run_config
+        else next((r.prompt_version for r in results if r.prompt_version), "unknown")
+    )
+
+    config = {
+        "created_at": created_at,
+        "models": run_config.models if run_config else models,
+        "prompt_version": prompt_version,
+        "segmentation_mode": (
+            run_config.segmentation_mode.value
+            if run_config and hasattr(run_config.segmentation_mode, "value")
+            else str(run_config.segmentation_mode) if run_config
+            else "unknown"
+        ),
+        "segmentation_config": run_config.segmentation_config if run_config else {},
+        "extraction_config": run_config.extraction_config if run_config else {},
+        "video_ids": run_config.video_ids if run_config else video_ids,
+    }
+
+    # Per-model summaries
+    model_summaries = {}
+    for m in models:
+        s = compute_model_summary(results, m)
+        model_summaries[m] = {
+            "model_name": s.model_name,
+            "total_segments": s.total_segments,
+            "successful_parses": s.successful_parses,
+            "failed_parses": s.failed_parses,
+            "parse_success_rate": s.parse_success_rate,
+            "avg_latency_ms": s.avg_latency_ms,
+            "median_latency_ms": s.median_latency_ms,
+            "p95_latency_ms": s.p95_latency_ms,
+            "total_estimated_cost": s.total_estimated_cost,
+            "avg_confidence": s.avg_confidence,
+        }
+
+    # Agreement matrix (with verb synonym matching)
+    agreement = compute_agreement_matrix(results)
+
+    # Segments — deduplicated from results
+    seen_segments: dict[str, dict] = {}
+    for r in results:
+        if r.segment_id not in seen_segments:
+            seen_segments[r.segment_id] = {
+                "segment_id": r.segment_id,
+                "video_id": r.video_id,
+                "start_time_s": r.start_time_s,
+                "end_time_s": r.end_time_s,
+            }
+    segments = sorted(seen_segments.values(), key=lambda s: (s["video_id"], s["start_time_s"]))
+
+    # Total cost
+    total_cost = sum(r.estimated_cost for r in results if r.estimated_cost is not None)
+
+    # Ground truth accuracy
+    accuracy_by_model = None
+    if gt_labels:
+        accuracy_by_model = compute_ground_truth_accuracy(results, gt_labels)
+
+    # Merge accuracy into summaries so frontend's summary_overrides picks it up
+    summaries_with_accuracy = model_summaries
+    if accuracy_by_model:
+        for m, acc in accuracy_by_model.items():
+            if m in summaries_with_accuracy:
+                summaries_with_accuracy[m]["exact_match_rate"] = acc.get("exact_match_rate")
+                summaries_with_accuracy[m]["fuzzy_match_rate"] = acc.get("fuzzy_match_rate")
+
+    # Sweep summary (if results contain sweep data)
+    sweep_summary = None
+    has_sweep = any(r.extraction_variant_id for r in results)
+    if has_sweep:
+        sweep_data = compute_sweep_metrics(results)
+        sweep_summary = {
+            "has_sweep": True,
+            "cells": [asdict(c) for c in sweep_data["cells"]],
+            "stability": [asdict(s) for s in sweep_data["stability"]],
+            "agreement_by_variant": sweep_data["agreement_by_variant"],
+        }
+
+    # Result records (without raw_response_text, already handled by DataFrame)
+    records = _json.loads(df.to_json(orient="records"))
+
+    return {
+        "run_id": run_id,
+        "display_name": display_name,
+        "config": config,
+        "models": models,
+        "segments": segments,
+        "agreement": agreement,
+        "summaries": summaries_with_accuracy,
+        "sweep_summary": sweep_summary,
+        "cost_estimate_usd": round(total_cost, 6) if total_cost > 0 else None,
+        "accuracy_by_model": accuracy_by_model,
+        "results": records,
+    }

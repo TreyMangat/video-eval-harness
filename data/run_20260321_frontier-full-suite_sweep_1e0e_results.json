@@ -1,6 +1,447 @@
 {
   "run_id": "run_20260321_frontier-full-suite_sweep_1e0e",
   "display_name": "frontier-full-suite",
+  "config": {
+    "created_at": "2026-03-21T06:40:14.119732+00:00",
+    "models": [
+      "gemini-3.1-pro",
+      "gpt-5.4",
+      "qwen3.5-vl",
+      "llama-4-maverick"
+    ],
+    "prompt_version": "action_label",
+    "segmentation_mode": "fixed_window",
+    "segmentation_config": {
+      "mode": "fixed_window",
+      "window_size_s": 10.0,
+      "stride_s": null,
+      "min_segment_s": 2.0
+    },
+    "extraction_config": {
+      "num_frames": 8,
+      "method": "uniform",
+      "image_format": "jpg",
+      "image_quality": 85,
+      "max_dimension": 1280,
+      "generate_contact_sheet": false,
+      "contact_sheet_cols": 4
+    },
+    "video_ids": [
+      "vid_action_45s_6af251233085",
+      "vid_animals_30s_a3850df30521",
+      "vid_book_0b24bf14c49c",
+      "vid_cooking_30s_fef2c4bbe545",
+      "vid_cutting_e6b342db0675",
+      "vid_factory2_30s_6350043d6907",
+      "vid_factory_30s_6fb1e4ca1824",
+      "vid_test_25s_c0eda5baa91e"
+    ]
+  },
+  "models": [
+    "gemini-3.1-pro",
+    "gpt-5.4",
+    "llama-4-maverick",
+    "qwen3.5-vl"
+  ],
+  "segments": [
+    {
+      "segment_id": "vid_action_45s_6af251233085_seg0000",
+      "video_id": "vid_action_45s_6af251233085",
+      "start_time_s": 0.0,
+      "end_time_s": 10.0
+    },
+    {
+      "segment_id": "vid_action_45s_6af251233085_seg0001",
+      "video_id": "vid_action_45s_6af251233085",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    },
+    {
+      "segment_id": "vid_action_45s_6af251233085_seg0002",
+      "video_id": "vid_action_45s_6af251233085",
+      "start_time_s": 20.0,
+      "end_time_s": 30.0
+    },
+    {
+      "segment_id": "vid_action_45s_6af251233085_seg0003",
+      "video_id": "vid_action_45s_6af251233085",
+      "start_time_s": 30.0,
+      "end_time_s": 40.0
+    },
+    {
+      "segment_id": "vid_action_45s_6af251233085_seg0004",
+      "video_id": "vid_action_45s_6af251233085",
+      "start_time_s": 40.0,
+      "end_time_s": 45.0
+    },
+    {
+      "segment_id": "vid_animals_30s_a3850df30521_seg0001",
+      "video_id": "vid_animals_30s_a3850df30521",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    },
+    {
+      "segment_id": "vid_animals_30s_a3850df30521_seg0002",
+      "video_id": "vid_animals_30s_a3850df30521",
+      "start_time_s": 20.0,
+      "end_time_s": 30.0
+    },
+    {
+      "segment_id": "vid_book_0b24bf14c49c_seg0000",
+      "video_id": "vid_book_0b24bf14c49c",
+      "start_time_s": 0.0,
+      "end_time_s": 9.173
+    },
+    {
+      "segment_id": "vid_cooking_30s_fef2c4bbe545_seg0000",
+      "video_id": "vid_cooking_30s_fef2c4bbe545",
+      "start_time_s": 0.0,
+      "end_time_s": 10.0
+    },
+    {
+      "segment_id": "vid_cooking_30s_fef2c4bbe545_seg0001",
+      "video_id": "vid_cooking_30s_fef2c4bbe545",
+      "start_time_s": 10.0,
+      "end_time_s": 13.96
+    },
+    {
+      "segment_id": "vid_cutting_e6b342db0675_seg0001",
+      "video_id": "vid_cutting_e6b342db0675",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    },
+    {
+      "segment_id": "vid_cutting_e6b342db0675_seg0002",
+      "video_id": "vid_cutting_e6b342db0675",
+      "start_time_s": 20.0,
+      "end_time_s": 30.0
+    },
+    {
+      "segment_id": "vid_cutting_e6b342db0675_seg0003",
+      "video_id": "vid_cutting_e6b342db0675",
+      "start_time_s": 30.0,
+      "end_time_s": 35.135
+    },
+    {
+      "segment_id": "vid_factory2_30s_6350043d6907_seg0000",
+      "video_id": "vid_factory2_30s_6350043d6907",
+      "start_time_s": 0.0,
+      "end_time_s": 10.0
+    },
+    {
+      "segment_id": "vid_factory2_30s_6350043d6907_seg0001",
+      "video_id": "vid_factory2_30s_6350043d6907",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    },
+    {
+      "segment_id": "vid_factory_30s_6fb1e4ca1824_seg0000",
+      "video_id": "vid_factory_30s_6fb1e4ca1824",
+      "start_time_s": 0.0,
+      "end_time_s": 10.0
+    },
+    {
+      "segment_id": "vid_factory_30s_6fb1e4ca1824_seg0001",
+      "video_id": "vid_factory_30s_6fb1e4ca1824",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    },
+    {
+      "segment_id": "vid_factory_30s_6fb1e4ca1824_seg0002",
+      "video_id": "vid_factory_30s_6fb1e4ca1824",
+      "start_time_s": 20.0,
+      "end_time_s": 26.667
+    },
+    {
+      "segment_id": "vid_test_25s_c0eda5baa91e_seg0000",
+      "video_id": "vid_test_25s_c0eda5baa91e",
+      "start_time_s": 0.0,
+      "end_time_s": 10.0
+    },
+    {
+      "segment_id": "vid_test_25s_c0eda5baa91e_seg0001",
+      "video_id": "vid_test_25s_c0eda5baa91e",
+      "start_time_s": 10.0,
+      "end_time_s": 20.0
+    }
+  ],
+  "agreement": {
+    "gemini-3.1-pro": {
+      "gemini-3.1-pro": 1.0,
+      "gpt-5.4": 0.675,
+      "llama-4-maverick": 0.4700000000000001,
+      "qwen3.5-vl": 0.668421052631579
+    },
+    "gpt-5.4": {
+      "gemini-3.1-pro": 0.675,
+      "gpt-5.4": 1.0,
+      "llama-4-maverick": 0.48500000000000004,
+      "qwen3.5-vl": 0.7631578947368421
+    },
+    "llama-4-maverick": {
+      "gemini-3.1-pro": 0.4700000000000001,
+      "gpt-5.4": 0.48500000000000004,
+      "llama-4-maverick": 1.0,
+      "qwen3.5-vl": 0.5964912280701755
+    },
+    "qwen3.5-vl": {
+      "gemini-3.1-pro": 0.668421052631579,
+      "gpt-5.4": 0.7631578947368421,
+      "llama-4-maverick": 0.5964912280701755,
+      "qwen3.5-vl": 1.0
+    }
+  },
+  "summaries": {
+    "gemini-3.1-pro": {
+      "model_name": "gemini-3.1-pro",
+      "total_segments": 40,
+      "successful_parses": 40,
+      "failed_parses": 0,
+      "parse_success_rate": 1.0,
+      "avg_latency_ms": 18372.392196875466,
+      "median_latency_ms": 17866.658700002517,
+      "p95_latency_ms": 26279.874659999587,
+      "total_estimated_cost": 0.8677160000000002,
+      "avg_confidence": 0.9545000000000001
+    },
+    "gpt-5.4": {
+      "model_name": "gpt-5.4",
+      "total_segments": 40,
+      "successful_parses": 40,
+      "failed_parses": 0,
+      "parse_success_rate": 1.0,
+      "avg_latency_ms": 4972.98887812542,
+      "median_latency_ms": 4681.7090999993525,
+      "p95_latency_ms": 6660.240920001161,
+      "total_estimated_cost": 0.47317499999999996,
+      "avg_confidence": 0.9235
+    },
+    "llama-4-maverick": {
+      "model_name": "llama-4-maverick",
+      "total_segments": 40,
+      "successful_parses": 40,
+      "failed_parses": 0,
+      "parse_success_rate": 1.0,
+      "avg_latency_ms": 4093.0838906251665,
+      "median_latency_ms": 3934.05415000052,
+      "p95_latency_ms": 6606.581414999528,
+      "total_estimated_cost": 0.06327480000000002,
+      "avg_confidence": 0.91625
+    },
+    "qwen3.5-vl": {
+      "model_name": "qwen3.5-vl",
+      "total_segments": 40,
+      "successful_parses": 34,
+      "failed_parses": 6,
+      "parse_success_rate": 0.85,
+      "avg_latency_ms": 27683.831445454416,
+      "median_latency_ms": 24985.07979999704,
+      "p95_latency_ms": 45222.68247999964,
+      "total_estimated_cost": 0.25937403,
+      "avg_confidence": 0.9370588235294117
+    }
+  },
+  "sweep_summary": {
+    "has_sweep": true,
+    "cells": [
+      {
+        "model_name": "gemini-3.1-pro",
+        "variant_label": "uniform_8f",
+        "variant_id": "d64bd1f1437a",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 20960.352125000554,
+        "median_latency_ms": 20994.338349999452,
+        "p95_latency_ms": 27340.84042500035,
+        "avg_confidence": 0.9525,
+        "total_estimated_cost": 0.514794
+      },
+      {
+        "model_name": "gemini-3.1-pro",
+        "variant_label": "uniform_4f",
+        "variant_id": "e8f158717699",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 15784.432268750379,
+        "median_latency_ms": 14938.722750001034,
+        "p95_latency_ms": 25265.47065000068,
+        "avg_confidence": 0.9564999999999999,
+        "total_estimated_cost": 0.352922
+      },
+      {
+        "model_name": "gpt-5.4",
+        "variant_label": "uniform_8f",
+        "variant_id": "d64bd1f1437a",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 4900.81389375041,
+        "median_latency_ms": 4621.796999999788,
+        "p95_latency_ms": 6603.4358000015345,
+        "avg_confidence": 0.9214999999999998,
+        "total_estimated_cost": 0.29602999999999996
+      },
+      {
+        "model_name": "gpt-5.4",
+        "variant_label": "uniform_4f",
+        "variant_id": "e8f158717699",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 5045.163862500431,
+        "median_latency_ms": 4717.006750001019,
+        "p95_latency_ms": 6684.601049999401,
+        "avg_confidence": 0.9254999999999999,
+        "total_estimated_cost": 0.17714500000000002
+      },
+      {
+        "model_name": "llama-4-maverick",
+        "variant_label": "uniform_8f",
+        "variant_id": "d64bd1f1437a",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 4670.6631750003,
+        "median_latency_ms": 4718.61120000176,
+        "p95_latency_ms": 6588.592674998836,
+        "avg_confidence": 0.9174999999999999,
+        "total_estimated_cost": 0.0368792
+      },
+      {
+        "model_name": "llama-4-maverick",
+        "variant_label": "uniform_4f",
+        "variant_id": "e8f158717699",
+        "total_segments": 20,
+        "successful_parses": 20,
+        "parse_success_rate": 1.0,
+        "avg_latency_ms": 3515.5046062500332,
+        "median_latency_ms": 3228.317249999236,
+        "p95_latency_ms": 5733.503075001863,
+        "avg_confidence": 0.915,
+        "total_estimated_cost": 0.026395599999999998
+      },
+      {
+        "model_name": "qwen3.5-vl",
+        "variant_label": "uniform_8f",
+        "variant_id": "d64bd1f1437a",
+        "total_segments": 20,
+        "successful_parses": 16,
+        "parse_success_rate": 0.8,
+        "avg_latency_ms": 25900.72086470579,
+        "median_latency_ms": 25061.309400000027,
+        "p95_latency_ms": 40960.87299999999,
+        "avg_confidence": 0.9393750000000001,
+        "total_estimated_cost": 0.14273644
+      },
+      {
+        "model_name": "qwen3.5-vl",
+        "variant_label": "uniform_4f",
+        "variant_id": "e8f158717699",
+        "total_segments": 20,
+        "successful_parses": 18,
+        "parse_success_rate": 0.9,
+        "avg_latency_ms": 29578.38643749983,
+        "median_latency_ms": 24021.53195000028,
+        "p95_latency_ms": 59349.72589999961,
+        "avg_confidence": 0.9349999999999999,
+        "total_estimated_cost": 0.11663759
+      }
+    ],
+    "stability": [
+      {
+        "model_name": "gemini-3.1-pro",
+        "self_agreement": 0.7550000000000001,
+        "rank_positions": [
+          1,
+          1
+        ],
+        "rank_stability": 1.0
+      },
+      {
+        "model_name": "gpt-5.4",
+        "self_agreement": 0.77,
+        "rank_positions": [
+          2,
+          2
+        ],
+        "rank_stability": 1.0
+      },
+      {
+        "model_name": "llama-4-maverick",
+        "self_agreement": 0.7050000000000001,
+        "rank_positions": [
+          3,
+          3
+        ],
+        "rank_stability": 1.0
+      },
+      {
+        "model_name": "qwen3.5-vl",
+        "self_agreement": 0.78,
+        "rank_positions": [
+          4,
+          4
+        ],
+        "rank_stability": 1.0
+      }
+    ],
+    "agreement_by_variant": {
+      "uniform_8f": {
+        "gemini-3.1-pro": {
+          "gemini-3.1-pro": 1.0,
+          "gpt-5.4": 0.6266666666666666,
+          "llama-4-maverick": 0.5716666666666667,
+          "qwen3.5-vl": 0.70625
+        },
+        "gpt-5.4": {
+          "gemini-3.1-pro": 0.6266666666666666,
+          "gpt-5.4": 1.0,
+          "llama-4-maverick": 0.515,
+          "qwen3.5-vl": 0.6895833333333334
+        },
+        "llama-4-maverick": {
+          "gemini-3.1-pro": 0.5716666666666667,
+          "gpt-5.4": 0.515,
+          "llama-4-maverick": 1.0,
+          "qwen3.5-vl": 0.6583333333333334
+        },
+        "qwen3.5-vl": {
+          "gemini-3.1-pro": 0.70625,
+          "gpt-5.4": 0.6895833333333334,
+          "llama-4-maverick": 0.6583333333333334,
+          "qwen3.5-vl": 1.0
+        }
+      },
+      "uniform_4f": {
+        "gemini-3.1-pro": {
+          "gemini-3.1-pro": 1.0,
+          "gpt-5.4": 0.675,
+          "llama-4-maverick": 0.4700000000000001,
+          "qwen3.5-vl": 0.6666666666666667
+        },
+        "gpt-5.4": {
+          "gemini-3.1-pro": 0.675,
+          "gpt-5.4": 1.0,
+          "llama-4-maverick": 0.48500000000000004,
+          "qwen3.5-vl": 0.8055555555555557
+        },
+        "llama-4-maverick": {
+          "gemini-3.1-pro": 0.4700000000000001,
+          "gpt-5.4": 0.48500000000000004,
+          "llama-4-maverick": 1.0,
+          "qwen3.5-vl": 0.6296296296296297
+        },
+        "qwen3.5-vl": {
+          "gemini-3.1-pro": 0.6666666666666667,
+          "gpt-5.4": 0.8055555555555557,
+          "llama-4-maverick": 0.6296296296296297,
+          "qwen3.5-vl": 1.0
+        }
+      }
+    }
+  },
   "cost_estimate_usd": 1.66354,
   "accuracy_by_model": null,
   "results": [

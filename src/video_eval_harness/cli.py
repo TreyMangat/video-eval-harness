@@ -898,7 +898,7 @@ def _run_single(
 
     # Export
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -1054,7 +1054,7 @@ def _run_sweep(
         _run_llm_judge(results)
 
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels, run_config=run_config)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -1147,7 +1147,7 @@ def evaluate(
         dn = run_cfg.display_name if run_cfg else None
         gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
         run_dir = storage.run_dir(run_id)
-        paths = export_results(results, run_dir, run_id, display_name=dn, gt_labels=gt_labels)
+        paths = export_results(results, run_dir, run_id, display_name=dn, gt_labels=gt_labels, run_config=run_cfg)
         for p in paths:
             console.print(f"  Exported: [cyan]{p}[/cyan]")
 
@@ -1657,7 +1657,7 @@ def export(
     run_cfg = storage.get_run(run_id)
     dn = run_cfg.display_name if run_cfg else None
     formats = [f.strip() for f in format.split(",")]
-    paths = export_results(results, output_dir, run_id, formats, display_name=dn)
+    paths = export_results(results, output_dir, run_id, formats, display_name=dn, run_config=run_cfg)
     for p in paths:
         console.print(f"  [green]OK[/green] {p}")
 
