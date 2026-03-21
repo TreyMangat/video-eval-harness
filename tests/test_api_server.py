@@ -6,14 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from deploy.api_server import create_app, jobs
-
-
-@pytest.fixture(autouse=True)
-def clear_jobs() -> None:
-    jobs.clear()
-    yield
-    jobs.clear()
+from deploy.api_server import create_app
 
 
 @pytest.fixture
@@ -74,6 +67,31 @@ def test_get_unknown_job_returns_404(client) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Unknown job ID."
+
+
+def test_post_benchmark_persists_job_state(client, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deploy.api_server.probe_video",
+        lambda path: SimpleNamespace(duration_s=5.0),
+    )
+
+    response = client.post(
+        "/api/benchmark",
+        data={"models": '["gemini-3-flash"]'},
+        files={"video": ("clip.mp4", b"tiny", "video/mp4")},
+    )
+
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    job_response = client.get(f"/api/jobs/{job_id}")
+    assert job_response.status_code == 200
+    assert job_response.json() == {
+        "job_id": job_id,
+        "status": "queued",
+        "run_id": None,
+        "error": None,
+    }
 
 
 def test_cors_headers_are_present(client) -> None:

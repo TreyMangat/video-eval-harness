@@ -6,13 +6,41 @@ import {
 } from "./local-runs";
 import type { RunListItem, RunPayload, SegmentMedia } from "./types";
 
+function sortRunsByDate(runs: RunListItem[]): RunListItem[] {
+  return [...runs].sort(
+    (left, right) =>
+      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  );
+}
+
+function mergeRuns(primary: RunListItem[], secondary: RunListItem[]): RunListItem[] {
+  const merged = new Map<string, RunListItem>();
+  for (const run of [...primary, ...secondary]) {
+    if (!merged.has(run.run_id)) {
+      merged.set(run.run_id, run);
+    }
+  }
+  return sortRunsByDate([...merged.values()]);
+}
+
 export async function listRuns(dataDir?: string): Promise<RunListItem[]> {
   if (isInteractiveMode()) {
-    try {
-      return await fetchRuns();
-    } catch {
-      return [];
+    const [liveRuns, staticRuns] = await Promise.allSettled([
+      fetchRuns(),
+      listArtifactRuns(dataDir),
+    ]);
+
+    const resolvedLiveRuns = liveRuns.status === "fulfilled" ? liveRuns.value : [];
+    const resolvedStaticRuns = staticRuns.status === "fulfilled" ? staticRuns.value : [];
+
+    if (liveRuns.status === "rejected") {
+      console.error("Failed to load live runs:", liveRuns.reason);
     }
+    if (staticRuns.status === "rejected") {
+      console.error("Failed to load static runs:", staticRuns.reason);
+    }
+
+    return mergeRuns(resolvedLiveRuns, resolvedStaticRuns);
   }
 
   try {
@@ -30,8 +58,14 @@ export async function loadRun(
   if (isInteractiveMode()) {
     try {
       return await fetchRun(runId);
-    } catch {
-      return null;
+    } catch (liveError) {
+      console.error(`Failed to load live run ${runId}:`, liveError);
+      try {
+        return await loadArtifactRun(runId, dataDir);
+      } catch (localError) {
+        console.error(`Failed to load local run ${runId}:`, localError);
+        return null;
+      }
     }
   }
 
@@ -52,8 +86,14 @@ export async function loadSegmentMedia(
   if (isInteractiveMode()) {
     try {
       return await fetchSegmentMedia(runId, segmentId, variantId);
-    } catch {
-      return null;
+    } catch (liveError) {
+      console.error(`Failed to load live segment media for ${runId}/${segmentId}:`, liveError);
+      try {
+        return await loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
+      } catch (localError) {
+        console.error(`Failed to load local segment media for ${runId}/${segmentId}:`, localError);
+        return null;
+      }
     }
   }
 

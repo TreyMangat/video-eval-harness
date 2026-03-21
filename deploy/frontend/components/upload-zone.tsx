@@ -137,6 +137,8 @@ export function UploadZone() {
           }
 
           if (jobStatus.status === "complete" && jobStatus.run_id) {
+            setStatusMessage("Opening results...");
+            setJob(null);
             router.push(`/report/${jobStatus.run_id}`);
             return;
           }

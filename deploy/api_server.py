@@ -26,6 +26,7 @@ from video_eval_harness.utils.ffmpeg import probe_video
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARTIFACTS_DIR = Path(os.environ.get("VBENCH_ARTIFACTS_DIR", str(ROOT / "artifacts")))
 DEFAULT_RUNS_DIR = "runs"
+DEFAULT_JOBS_DIR = "jobs"
 UPLOADS_DIR = "uploads"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ESTIMATED_TIME_S = 90
@@ -66,14 +67,17 @@ except Exception:  # pragma: no cover - fallback only used if limits.py is unava
 
 
 class JobState(TypedDict):
+    job_id: str
     status: str
     run_id: Optional[str]
     error: Optional[str]
 
 
-JobRunner = Callable[[Path, str, Path, list[str], Optional[str], set[str]], None]
-
-jobs: dict[str, JobState] = {}
+ArtifactSync = Callable[[], None]
+JobRunner = Callable[
+    [Path, str, Path, list[str], Optional[str], set[str], Optional[ArtifactSync]],
+    None,
+]
 
 FAST_TIER_MODELS: list[dict[str, Any]] = [
     {
@@ -107,12 +111,16 @@ def create_app(
     artifacts_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     *,
     job_runner: Optional[JobRunner] = None,
+    sync_artifacts: Optional[ArtifactSync] = None,
+    refresh_artifacts: Optional[ArtifactSync] = None,
 ) -> FastAPI:
     """Create the dashboard backend application."""
 
     app = FastAPI(title="VBench API", version="0.3.0")
     app.state.artifacts_dir = Path(artifacts_dir)
     app.state.job_runner = job_runner or _run_benchmark_job
+    app.state.sync_artifacts = sync_artifacts or _noop_sync
+    app.state.refresh_artifacts = refresh_artifacts or _noop_sync
     app.state.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     allowed_origin = os.environ.get("ALLOWED_ORIGIN", "").strip()
@@ -147,10 +155,12 @@ def create_app(
 
     @app.get("/api/runs")
     async def list_runs() -> list[dict[str, Any]]:
+        app.state.refresh_artifacts()
         return _list_runs(Path(app.state.artifacts_dir))
 
     @app.get("/api/runs/{run_id}")
     async def get_run(run_id: str) -> dict[str, Any]:
+        app.state.refresh_artifacts()
         storage = Storage(app.state.artifacts_dir)
         try:
             return _build_run_payload(storage, run_id)
@@ -159,6 +169,7 @@ def create_app(
 
     @app.get("/api/runs/{run_id}/segments/{segment_id}/media")
     async def get_segment_media(run_id: str, segment_id: str) -> dict[str, Any]:
+        app.state.refresh_artifacts()
         storage = Storage(app.state.artifacts_dir)
         try:
             return _build_segment_media_payload(storage, run_id, segment_id)
@@ -215,7 +226,12 @@ def create_app(
             raise HTTPException(status_code=422, detail=error_message or "Upload rejected.")
 
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {"status": "queued", "run_id": None, "error": None}
+        _save_job(
+            Path(app.state.artifacts_dir),
+            job_id,
+            "queued",
+            sync_artifacts=app.state.sync_artifacts,
+        )
         background_tasks.add_task(
             app.state.job_runner,
             Path(app.state.artifacts_dir),
@@ -224,6 +240,7 @@ def create_app(
             requested_models,
             _normalize_name(name),
             _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
+            app.state.sync_artifacts,
         )
 
         return {
@@ -234,7 +251,8 @@ def create_app(
 
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str) -> dict[str, Any]:
-        job = jobs.get(job_id)
+        app.state.refresh_artifacts()
+        job = _load_job(Path(app.state.artifacts_dir), job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Unknown job ID.")
         return job
@@ -290,6 +308,10 @@ def _normalize_name(raw_name: Optional[str]) -> Optional[str]:
     return cleaned or None
 
 
+def _noop_sync() -> None:
+    return None
+
+
 def _runs_dir(artifacts_dir: Path) -> Path:
     runs_dir = artifacts_dir / DEFAULT_RUNS_DIR
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -300,6 +322,61 @@ def _existing_run_ids(runs_dir: Path) -> set[str]:
     if not runs_dir.exists():
         return set()
     return {entry.name for entry in runs_dir.iterdir() if entry.is_dir()}
+
+
+def _jobs_dir(artifacts_dir: Path) -> Path:
+    jobs_dir = artifacts_dir / DEFAULT_JOBS_DIR
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    return jobs_dir
+
+
+def _save_job(
+    artifacts_dir: Path,
+    job_id: str,
+    status: str,
+    *,
+    run_id: Optional[str] = None,
+    error: Optional[str] = None,
+    sync_artifacts: Optional[ArtifactSync] = None,
+) -> JobState:
+    job_data: JobState = {
+        "job_id": job_id,
+        "status": status,
+        "run_id": run_id,
+        "error": error,
+    }
+    (_jobs_dir(artifacts_dir) / f"{job_id}.json").write_text(
+        json.dumps(job_data),
+        encoding="utf-8",
+    )
+    if sync_artifacts is not None:
+        sync_artifacts()
+    return job_data
+
+
+def _load_job(artifacts_dir: Path, job_id: str) -> Optional[JobState]:
+    path = _jobs_dir(artifacts_dir) / f"{job_id}.json"
+    if not path.exists():
+        return None
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return None
+
+    status = payload.get("status")
+    if not isinstance(status, str):
+        return None
+
+    run_id = payload.get("run_id")
+    error = payload.get("error")
+    stored_job_id = payload.get("job_id")
+
+    return {
+        "job_id": stored_job_id if isinstance(stored_job_id, str) else job_id,
+        "status": status,
+        "run_id": run_id if isinstance(run_id, str) else None,
+        "error": error if isinstance(error, str) else None,
+    }
 
 
 def _augment_pythonpath(extra_path: Path, current: Optional[str]) -> str:
@@ -316,8 +393,14 @@ def _run_benchmark_job(
     requested_models: list[str],
     name: Optional[str],
     before_runs: set[str],
+    sync_artifacts: Optional[ArtifactSync] = None,
 ) -> None:
-    jobs[job_id] = {"status": "running", "run_id": None, "error": None}
+    _save_job(
+        artifacts_dir,
+        job_id,
+        "running",
+        sync_artifacts=sync_artifacts,
+    )
     run_id: Optional[str] = None
 
     try:
@@ -355,36 +438,58 @@ def _run_benchmark_job(
             check=False,
             env=env,
         )
+        stdout_text = result.stdout or ""
+        stderr_text = result.stderr or ""
 
         (upload_path.parent / "benchmark.stdout.log").write_text(
-            result.stdout or "",
+            stdout_text,
             encoding="utf-8",
         )
         (upload_path.parent / "benchmark.stderr.log").write_text(
-            result.stderr or "",
+            stderr_text,
             encoding="utf-8",
         )
 
         if result.returncode != 0:
-            jobs[job_id] = {
-                "status": "failed",
-                "run_id": None,
-                "error": _command_error(result.stdout, result.stderr),
-            }
+            _save_job(
+                artifacts_dir,
+                job_id,
+                "failed",
+                error=_command_error(stdout_text, stderr_text),
+                sync_artifacts=sync_artifacts,
+            )
             return
 
-        run_id = _detect_run_id(result.stdout, before_runs, _runs_dir(artifacts_dir))
+        if sync_artifacts is not None:
+            sync_artifacts()
+
+        run_id = _detect_run_id(stdout_text, before_runs, _runs_dir(artifacts_dir))
         if not run_id:
-            jobs[job_id] = {
-                "status": "failed",
-                "run_id": None,
-                "error": "Benchmark completed but the run ID could not be detected.",
-            }
+            _save_job(
+                artifacts_dir,
+                job_id,
+                "failed",
+                error="Benchmark completed but the run ID could not be detected.",
+                sync_artifacts=sync_artifacts,
+            )
             return
 
-        jobs[job_id] = {"status": "complete", "run_id": run_id, "error": None}
+        _save_job(
+            artifacts_dir,
+            job_id,
+            "complete",
+            run_id=run_id,
+            sync_artifacts=sync_artifacts,
+        )
     except Exception as exc:  # pragma: no cover - exercised through API behavior
-        jobs[job_id] = {"status": "failed", "run_id": run_id, "error": str(exc)}
+        _save_job(
+            artifacts_dir,
+            job_id,
+            "failed",
+            run_id=run_id,
+            error=str(exc),
+            sync_artifacts=sync_artifacts,
+        )
     finally:
         shutil.rmtree(upload_path.parent, ignore_errors=True)
 
