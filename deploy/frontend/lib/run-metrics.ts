@@ -227,6 +227,8 @@ export function computeModelSummary(results: LabelResult[], modelName: string): 
     failed_parses: modelResults.length - successful.length,
     parse_success_rate:
       modelResults.length === 0 ? 0 : successful.length / modelResults.length,
+    exact_match_rate: null,
+    fuzzy_match_rate: null,
     avg_latency_ms:
       latencies.length === 0
         ? null
@@ -538,7 +540,8 @@ function buildVideos(results: LabelResult[]): RunPayload["videos"] {
 export function buildRunPayload(
   runId: string,
   results: LabelResult[],
-  sweepSummary?: SweepMetrics | null
+  sweepSummary?: SweepMetrics | null,
+  summaryOverrides?: Record<string, Partial<ModelSummary>> | null
 ): RunPayload {
   const models = [...new Set(results.map((result) => result.model_name))].sort();
   const videoIds = [...new Set(results.map((result) => result.video_id))];
@@ -563,7 +566,16 @@ export function buildRunPayload(
     models,
     videos: buildVideos(results),
     summaries: Object.fromEntries(
-      models.map((modelName) => [modelName, computeModelSummary(results, modelName)])
+      models.map((modelName) => {
+        const baseSummary = computeModelSummary(results, modelName);
+        return [
+          modelName,
+          {
+            ...baseSummary,
+            ...(summaryOverrides?.[modelName] ?? {}),
+          },
+        ];
+      })
     ),
     agreement: computeAgreementMatrix(results),
     segments: buildSegments(results),

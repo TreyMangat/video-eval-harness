@@ -1,0 +1,151 @@
+"use client";
+
+import Link from "next/link";
+import { useDeferredValue, useMemo, useState } from "react";
+
+import { formatDateTime } from "../lib/analysis";
+
+export type RunsTableRow = {
+  run_id: string;
+  display_name: string;
+  created_at: string;
+  models: string[];
+  video_names: string[];
+  best_agreement: number | null;
+  best_model_name: string | null;
+  data_dir?: string;
+};
+
+function formatPercent(value: number | null): string {
+  if (value == null) {
+    return "\u2014";
+  }
+  return `${Math.round(value * 100)}%`;
+}
+
+function buildHref(pathname: string, query: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const suffix = params.toString();
+  return suffix ? `${pathname}?${suffix}` : pathname;
+}
+
+export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+
+  const filteredRows = useMemo(() => {
+    const normalized = deferredQuery.trim().toLowerCase();
+    if (!normalized) {
+      return rows;
+    }
+
+    return rows.filter((row) => {
+      const haystack = [
+        row.display_name,
+        row.run_id,
+        row.models.join(" "),
+        row.video_names.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [deferredQuery, rows]);
+
+  return (
+    <section className="visual-card">
+      <div className="section-heading">
+        <p className="section-eyebrow">Run Index</p>
+        <h2 className="run-title">Which run do you want to inspect?</h2>
+        <p className="chart-desc">
+          Filter by run name, model, or video, then jump straight into the dashboard, report, or
+          segment story.
+        </p>
+      </div>
+
+      <div className="runs-filter-row">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search runs, models, or videos"
+          aria-label="Filter runs"
+        />
+      </div>
+
+      {filteredRows.length === 0 ? (
+        <p className="empty-state">No runs match that filter.</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="data-table runs-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Date</th>
+                <th>Models</th>
+                <th>Videos</th>
+                <th>Quick Stats</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => (
+                <tr key={row.run_id}>
+                  <td>
+                    <div className="run-list-cell">
+                      <p className="run-list-name">{row.display_name}</p>
+                    </div>
+                  </td>
+                  <td>{formatDateTime(row.created_at)}</td>
+                  <td title={row.models.join(", ")}>
+                    {row.models.length} {row.models.length === 1 ? "model" : "models"}
+                  </td>
+                  <td title={row.video_names.join(", ")}>
+                    {row.video_names.length} {row.video_names.length === 1 ? "video" : "videos"}
+                  </td>
+                  <td>
+                    <div className="quick-stat-cell">
+                      <strong>{formatPercent(row.best_agreement)}</strong>
+                      <span>{row.best_model_name ?? "Not enough data"}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="inline-links">
+                      <Link
+                        href={buildHref("/dashboard", {
+                          run: row.run_id,
+                          dataDir: row.data_dir,
+                        })}
+                      >
+                        View
+                      </Link>
+                      <Link
+                        href={buildHref(`/report/${row.run_id}`, {
+                          dataDir: row.data_dir,
+                        })}
+                      >
+                        Report
+                      </Link>
+                      <Link
+                        href={buildHref(`/runs/${row.run_id}/segments`, {
+                          dataDir: row.data_dir,
+                        })}
+                      >
+                        Segments
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}

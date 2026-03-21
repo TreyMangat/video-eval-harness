@@ -35,6 +35,17 @@ test_videos/
 .pytest_cache/
 .mypy_cache/
 
+# Large datasets (downloaded, not checked in)
+data/egocentric-10k/
+data/UCF101/
+
+# Build artifacts
+*.zip
+
+# Frontend local env
+deploy/frontend/.env.local
+deploy/frontend/.env.production
+
 # OS
 .DS_Store
 Thumbs.db

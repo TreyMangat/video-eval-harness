@@ -1,11 +1,17 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import type { ModelDeltaRow, ParseSuccessMatrix, SegmentComparisonSample } from "../lib/analysis";
+import type {
+  CoreComparisonRow,
+  ModelDeltaRow,
+  ParseSuccessMatrix,
+  SegmentComparisonSample,
+} from "../lib/analysis";
 import {
+  displayRunName,
   formatDateTime,
   formatLatency,
   formatPercent,
-  formatSignedLatency,
+  formatMoney,
   formatSignedPercentDelta,
   formatTime,
 } from "../lib/analysis";
@@ -61,7 +67,7 @@ function SectionCard({
   title,
   description,
   children,
-  className = "raw-section",
+  className = "visual-card section-card",
 }: {
   title: string;
   description?: string;
@@ -70,11 +76,116 @@ function SectionCard({
 }) {
   return (
     <section className={className}>
-      <h3>{title}</h3>
-      {description ? <p className="chart-desc">{description}</p> : null}
+      <div className="section-heading">
+        <h3>{title}</h3>
+        {description ? <p className="chart-desc">{description}</p> : null}
+      </div>
       {children}
     </section>
   );
+}
+
+function primaryActionsDisagree(
+  actions: Array<string | null | undefined>
+): boolean {
+  const normalized = [...new Set(actions.map((action) => action?.trim()).filter(Boolean))];
+  return normalized.length > 1;
+}
+
+function deltaArrow(value: number | null, lowerIsBetter = false): string {
+  if (value == null || value === 0) {
+    return "\u2192";
+  }
+  const improved = lowerIsBetter ? value < 0 : value > 0;
+  return improved ? "\u25b2" : "\u25bc";
+}
+
+function deltaValueLabel(value: number | null, kind: "percent" | "latency" = "percent"): string {
+  if (value == null || value === 0) {
+    return "No change";
+  }
+  if (kind === "latency") {
+    return `${Math.abs(Math.round(value))} ms`;
+  }
+  return `${Math.abs(value * 100).toFixed(1)}%`;
+}
+
+function DeltaMetricCell({
+  leftValue,
+  rightValue,
+  delta,
+  lowerIsBetter = false,
+  kind = "percent",
+}: {
+  leftValue: number | null;
+  rightValue: number | null;
+  delta: number | null;
+  lowerIsBetter?: boolean;
+  kind?: "percent" | "latency";
+}) {
+  const formatter = kind === "latency" ? formatLatency : formatPercent;
+  return (
+    <td className="delta-metric-cell">
+      <div className="delta-metric-top">
+        <strong>{formatter(rightValue)}</strong>
+        <span className={metricDeltaClass(delta, lowerIsBetter)}>
+          {deltaArrow(delta, lowerIsBetter)} {deltaValueLabel(delta, kind)}
+        </span>
+      </div>
+      <p className="delta-metric-baseline">From {formatter(leftValue)}</p>
+    </td>
+  );
+}
+
+function bestOf(
+  rows: CoreComparisonRow[],
+  key: keyof Pick<
+    CoreComparisonRow,
+    "parse_rate" | "agreement" | "confidence" | "avg_latency_ms" | "total_cost" | "stability"
+  >,
+  preferLower = false
+): number | null {
+  const values = rows
+    .map((row) => row[key])
+    .filter((value): value is number => value != null);
+  if (values.length === 0) {
+    return null;
+  }
+  return preferLower ? Math.min(...values) : Math.max(...values);
+}
+
+function worstOf(
+  rows: CoreComparisonRow[],
+  key: keyof Pick<
+    CoreComparisonRow,
+    "parse_rate" | "agreement" | "confidence" | "avg_latency_ms" | "total_cost" | "stability"
+  >,
+  preferLower = false
+): number | null {
+  const values = rows
+    .map((row) => row[key])
+    .filter((value): value is number => value != null);
+  if (values.length === 0) {
+    return null;
+  }
+  return preferLower ? Math.max(...values) : Math.min(...values);
+}
+
+function scoreClass(
+  value: number | null,
+  best: number | null,
+  worst: number | null
+): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  if (best != null && value === best) {
+    return "score-best";
+  }
+  if (worst != null && value === worst) {
+    return "score-worst";
+  }
+  return undefined;
 }
 
 export function AgreementMatrixCard({
@@ -95,7 +206,7 @@ export function AgreementMatrixCard({
     <SectionCard
       title={title}
       description={description ?? "Pairwise primary-action agreement across model outputs."}
-      className="agreement-section"
+      className="visual-card agreement-section"
     >
       <div className="matrix-scroll">
         <table className="agreement-table">
@@ -132,6 +243,78 @@ export function AgreementMatrixCard({
   );
 }
 
+export function CoreComparisonTable({
+  rows,
+}: {
+  rows: CoreComparisonRow[];
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const bestParse = bestOf(rows, "parse_rate");
+  const worstParse = worstOf(rows, "parse_rate");
+  const bestAgreement = bestOf(rows, "agreement");
+  const worstAgreement = worstOf(rows, "agreement");
+  const bestConfidence = bestOf(rows, "confidence");
+  const worstConfidence = worstOf(rows, "confidence");
+  const bestLatency = bestOf(rows, "avg_latency_ms", true);
+  const worstLatency = worstOf(rows, "avg_latency_ms", true);
+  const bestCost = bestOf(rows, "total_cost", true);
+  const worstCost = worstOf(rows, "total_cost", true);
+  const bestStability = bestOf(rows, "stability");
+  const worstStability = worstOf(rows, "stability");
+
+  return (
+    <section className="raw-section">
+      <h3>Core Comparison</h3>
+      <p className="chart-desc">
+        Sorted by agreement so the strongest consensus model surfaces first.
+      </p>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Parse %</th>
+              <th>Agreement</th>
+              <th>Confidence</th>
+              <th>Avg Latency</th>
+              <th>Cost</th>
+              <th>Stability</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.model_name}>
+                <td>{row.model_name}</td>
+                <td className={scoreClass(row.parse_rate, bestParse, worstParse)}>
+                  {formatPercent(row.parse_rate)}
+                </td>
+                <td className={scoreClass(row.agreement, bestAgreement, worstAgreement)}>
+                  {formatPercent(row.agreement)}
+                </td>
+                <td className={scoreClass(row.confidence, bestConfidence, worstConfidence)}>
+                  {row.confidence == null ? "-" : row.confidence.toFixed(3)}
+                </td>
+                <td className={scoreClass(row.avg_latency_ms, bestLatency, worstLatency)}>
+                  {formatLatency(row.avg_latency_ms)}
+                </td>
+                <td className={scoreClass(row.total_cost, bestCost, worstCost)}>
+                  {formatMoney(row.total_cost)}
+                </td>
+                <td className={scoreClass(row.stability, bestStability, worstStability)}>
+                  {row.stability == null ? "-" : row.stability.toFixed(3)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function VariantHeatmapCard({
   title,
   description,
@@ -152,7 +335,7 @@ export function VariantHeatmapCard({
   }
 
   return (
-    <SectionCard title={title} description={description} className="agreement-section">
+    <SectionCard title={title} description={description} className="visual-card agreement-section">
       <div className="matrix-scroll">
         <table className="agreement-table">
           <thead>
@@ -251,45 +434,44 @@ export function MetricDeltaTableCard({
   return (
     <SectionCard title={title} description={description}>
       <div className="table-scroll">
-        <table className="data-table">
+        <table className="data-table delta-table">
           <thead>
             <tr>
               <th>Model</th>
-              <th>{leftLabel} Parse</th>
-              <th>{rightLabel} Parse</th>
-              <th>Delta</th>
-              <th>{leftLabel} Latency</th>
-              <th>{rightLabel} Latency</th>
-              <th>Delta</th>
-              <th>{leftLabel} Agreement</th>
-              <th>{rightLabel} Agreement</th>
-              <th>Delta</th>
+              <th>Parse Rate</th>
+              <th>Agreement</th>
+              <th>Latency</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.model_name}>
                 <td>{row.model_name}</td>
-                <td>{formatPercent(row.left_parse_rate)}</td>
-                <td>{formatPercent(row.right_parse_rate)}</td>
-                <td className={metricDeltaClass(row.parse_rate_delta)}>
-                  {formatSignedPercentDelta(row.parse_rate_delta)}
-                </td>
-                <td>{formatLatency(row.left_latency_ms)}</td>
-                <td>{formatLatency(row.right_latency_ms)}</td>
-                <td className={metricDeltaClass(row.latency_delta_ms, true)}>
-                  {formatSignedLatency(row.latency_delta_ms)}
-                </td>
-                <td>{formatPercent(row.left_agreement)}</td>
-                <td>{formatPercent(row.right_agreement)}</td>
-                <td className={metricDeltaClass(row.agreement_delta)}>
-                  {formatSignedPercentDelta(row.agreement_delta)}
-                </td>
+                <DeltaMetricCell
+                  leftValue={row.left_parse_rate}
+                  rightValue={row.right_parse_rate}
+                  delta={row.parse_rate_delta}
+                />
+                <DeltaMetricCell
+                  leftValue={row.left_agreement}
+                  rightValue={row.right_agreement}
+                  delta={row.agreement_delta}
+                />
+                <DeltaMetricCell
+                  leftValue={row.left_latency_ms}
+                  rightValue={row.right_latency_ms}
+                  delta={row.latency_delta_ms}
+                  lowerIsBetter
+                  kind="latency"
+                />
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="table-note">
+        {leftLabel} is the baseline. {rightLabel} is the comparison run.
+      </p>
     </SectionCard>
   );
 }
@@ -298,10 +480,14 @@ export function SegmentComparisonSamplesCard({
   title,
   description,
   samples,
+  formatSampleTitle,
+  formatSampleMeta,
 }: {
   title: string;
   description?: string;
   samples: SegmentComparisonSample[];
+  formatSampleTitle?: (sample: SegmentComparisonSample) => string;
+  formatSampleMeta?: (sample: SegmentComparisonSample) => string;
 }) {
   if (samples.length === 0) {
     return (
@@ -314,46 +500,57 @@ export function SegmentComparisonSamplesCard({
   return (
     <SectionCard title={title} description={description}>
       <div className="sample-grid">
-        {samples.map((sample) => (
-          <article key={sample.segment.segment_id} className="sample-card">
-            <div className="sample-card-head">
-              <div>
-                <h4>{sample.segment.segment_id}</h4>
-                <p className="sample-meta">
-                  {formatTime(sample.segment.start_time_s)} - {formatTime(sample.segment.end_time_s)}
-                  {sample.variant_label ? ` | ${sample.variant_label}` : ""}
-                </p>
+        {samples.map((sample) => {
+          const disagree = primaryActionsDisagree(
+            sample.results.map((result) => result.primary_action)
+          );
+          return (
+            <article key={sample.segment.segment_id} className="sample-card">
+              <div className="sample-card-head">
+                <div>
+                  <h4>{formatSampleTitle ? formatSampleTitle(sample) : sample.segment.segment_id}</h4>
+                  <p className="sample-meta">
+                    {formatSampleMeta
+                      ? formatSampleMeta(sample)
+                      : `${formatTime(sample.segment.start_time_s)} - ${formatTime(sample.segment.end_time_s)}${sample.variant_label ? ` \u00b7 ${sample.variant_label}` : ""}`}
+                  </p>
+                </div>
+                <div className="sample-card-badges">
+                  {disagree ? <span className="warning-pill">Models disagree</span> : null}
+                  <span className="sample-agreement">
+                    Agreement {formatPercent(sample.mean_agreement)}
+                  </span>
+                </div>
               </div>
-              <span className="sample-agreement">
-                Agreement {formatPercent(sample.mean_agreement)}
-              </span>
-            </div>
-            <div className="table-scroll">
-              <table className="data-table compact-table">
-                <thead>
-                  <tr>
-                    <th>Model</th>
-                    <th>Parsed</th>
-                    <th>Primary Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sample.results.map((result) => (
-                    <tr key={`${sample.segment.segment_id}-${result.model_name}`}>
-                      <td>{result.model_name}</td>
-                      <td>
-                        <span className={`parse-badge small ${result.parsed_success ? "ok" : "fail"}`}>
-                          {result.parsed_success ? "yes" : "no"}
-                        </span>
-                      </td>
-                      <td>{result.primary_action || result.parse_error || "-"}</td>
+              <div className="table-scroll">
+                <table className="data-table compact-table">
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Parsed</th>
+                      <th>Primary Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </article>
-        ))}
+                  </thead>
+                  <tbody>
+                    {sample.results.map((result) => (
+                      <tr key={`${sample.segment.segment_id}-${result.model_name}`}>
+                        <td>{result.model_name}</td>
+                        <td>
+                          <span className={`parse-badge small ${result.parsed_success ? "ok" : "fail"}`}>
+                            {result.parsed_success ? "yes" : "no"}
+                          </span>
+                        </td>
+                        <td className="sample-primary-action">
+                          {result.primary_action || result.parse_error || "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </SectionCard>
   );
@@ -368,6 +565,8 @@ export function RunMetadataCard({
   models,
   segments,
   extraRows = [],
+  compact = false,
+  compactText,
 }: {
   title: string;
   runId: string;
@@ -377,7 +576,23 @@ export function RunMetadataCard({
   models: string[];
   segments: number;
   extraRows?: Array<{ label: string; value: string }>;
+  compact?: boolean;
+  compactText?: string;
 }) {
+  if (compact) {
+    return (
+      <p className="page-breadcrumb">
+        {compactText ??
+          [
+            displayRunName(runId, createdAt),
+            `${models.length} ${models.length === 1 ? "model" : "models"}`,
+            videoLabel,
+            `${segments} ${segments === 1 ? "segment" : "segments"}`,
+          ].join(" \u00b7 ")}
+      </p>
+    );
+  }
+
   return (
     <SectionCard title={title}>
       <div className="table-scroll">

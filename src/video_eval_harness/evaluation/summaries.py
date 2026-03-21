@@ -9,8 +9,13 @@ from rich.console import Console
 from rich.table import Table
 
 from ..log import get_logger
-from ..schemas import SegmentLabelResult
-from .metrics import compute_agreement_matrix, compute_model_summary, compute_sweep_metrics
+from ..schemas import GroundTruthLabel, SegmentLabelResult
+from .metrics import (
+    compute_agreement_matrix,
+    compute_ground_truth_accuracy,
+    compute_model_summary,
+    compute_sweep_metrics,
+)
 
 logger = get_logger(__name__)
 console = Console()
@@ -225,8 +230,11 @@ def export_results(
     run_id: str,
     formats: list[str] | None = None,
     display_name: str | None = None,
+    gt_labels: list[GroundTruthLabel] | None = None,
 ) -> list[Path]:
     """Export results to CSV, Parquet, and/or JSON.
+
+    If gt_labels is provided, accuracy_by_model is included in the JSON export.
 
     Returns list of exported file paths.
     """
@@ -256,9 +264,23 @@ def export_results(
 
         json_path = output_dir / f"{run_id}_results.json"
         records = _json.loads(df.to_json(orient="records"))
+
+        # Compute total cost from all results
+        total_cost = sum(
+            r.estimated_cost for r in results
+            if r.estimated_cost is not None
+        )
+
+        # Compute accuracy if ground truth labels are available
+        accuracy_by_model = None
+        if gt_labels:
+            accuracy_by_model = compute_ground_truth_accuracy(results, gt_labels)
+
         envelope = {
             "run_id": run_id,
             "display_name": display_name,
+            "cost_estimate_usd": round(total_cost, 6) if total_cost > 0 else None,
+            "accuracy_by_model": accuracy_by_model,
             "results": records,
         }
         json_path.write_text(_json.dumps(envelope, indent=2), encoding="utf-8")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from video_eval_harness.evaluation.metrics import compute_sweep_metrics
 from video_eval_harness.schemas import SegmentLabelResult
 
@@ -100,5 +102,5 @@ def test_stability_score_edge_cases():
         item.model_name: item for item in compute_sweep_metrics(results)["stability"]
     }
 
-    assert stability_map["model-a"].self_agreement == 0.0
+    assert stability_map["model-a"].self_agreement == pytest.approx(0.425)
     assert 0.0 <= stability_map["model-a"].rank_stability <= 1.0

@@ -1,7 +1,11 @@
 export function getBackendUrl(path: string): string {
-  const baseUrl = process.env.MODAL_API_BASE_URL;
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.MODAL_API_BASE_URL;
   if (!baseUrl) {
-    throw new Error("MODAL_API_BASE_URL is not configured");
+    throw new Error(
+      "Neither NEXT_PUBLIC_API_URL nor MODAL_API_BASE_URL is configured"
+    );
   }
 
   return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();

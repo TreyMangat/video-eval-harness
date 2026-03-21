@@ -1,6 +1,65 @@
 # Deployment
 
-VBench can be run three ways: local development, a single Docker CLI container, or the full Docker Compose stack with the Streamlit viewer.
+VBench can be run four ways: Vercel + Modal (production), local development, a single Docker CLI container, or the full Docker Compose stack with the Streamlit viewer.
+
+## Quick start (Vercel + Modal)
+
+### 1. Deploy the API to Modal (~5 min)
+
+Install Modal CLI:
+
+```bash
+pip install modal
+modal setup   # authenticate
+```
+
+Create the secrets:
+
+```bash
+modal secret create vbench-secrets OPENROUTER_API_KEY=your-key-here
+```
+
+Deploy:
+
+```bash
+modal deploy deploy/modal/app.py
+```
+
+This prints a URL like: `https://your-username--vbench-video-eval-public-api.modal.run`
+Copy this URL for the next step.
+
+### 2. Deploy the dashboard to Vercel (~5 min)
+
+Push your repo to GitHub (already done).
+Go to vercel.com, New Project, Import your GitHub repo.
+Set root directory to: `deploy/frontend`
+Add environment variable:
+
+```
+NEXT_PUBLIC_API_URL = https://your-username--vbench-video-eval-public-api.modal.run
+```
+
+Deploy.
+
+Your dashboard is now live at `https://your-project.vercel.app`.
+
+### 3. Update CORS
+
+Go back to `deploy/api_server.py` and add your Vercel URL
+to the CORS `allow_origins` list, or set the `VBENCH_FRONTEND_URL` environment variable. Redeploy Modal:
+
+```bash
+modal deploy deploy/modal/app.py
+```
+
+### Test the Modal deployment locally first
+
+```bash
+pip install modal
+modal serve deploy/modal/app.py  # runs locally with hot reload
+# In another terminal:
+curl http://localhost:8000/health
+```
 
 ## Prerequisites
 
@@ -12,8 +71,10 @@ VBench can be run three ways: local development, a single Docker CLI container, 
 ## Environment Variables
 
 - `OPENROUTER_API_KEY`: required for `run-benchmark` and `sweep`.
-- `VBENCH_ARTIFACTS_DIR`: optional override for the artifacts root when running the React dashboard locally.
-- `VBENCH_RUNS_DIR`: optional override pointing directly at `artifacts/runs` for the React dashboard.
+- `VBENCH_ARTIFACTS_DIR`: optional override for the artifacts root (used by both api_server.py and Modal).
+- `VBENCH_RUNS_DIR`: optional override pointing directly at `artifacts/runs`.
+- `VBENCH_FRONTEND_URL`: Vercel URL to allow in CORS (used by api_server.py).
+- `NEXT_PUBLIC_API_URL`: Modal API URL for the Next.js frontend (on Vercel). Falls back to `MODAL_API_BASE_URL`.
 
 ## Local Development
 
@@ -32,6 +93,8 @@ What these do:
 - `make sweep-fast` runs the fast sweep config.
 - `make viewer` starts the Streamlit viewer on `http://localhost:8501`.
 - `make dashboard` starts the React dashboard on `http://localhost:3000`.
+
+No `NEXT_PUBLIC_API_URL` needed locally — the dashboard falls back to local artifacts and the local API server.
 
 ## Docker (Single Run)
 

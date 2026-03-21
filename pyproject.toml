@@ -37,6 +37,15 @@ ui = [
     "streamlit>=1.28",
     "plotly>=5.0",
 ]
+api = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "python-multipart>=0.0.9",
+]
+deploy = [
+    "video-eval-harness[api]",
+    "modal>=0.73",
+]
 
 [project.scripts]
 vbench = "video_eval_harness.cli:app"

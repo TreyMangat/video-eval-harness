@@ -6,7 +6,7 @@ STREAMLIT = $(PYTHON) -m streamlit
 VBENCH = $(PYTHON) -m video_eval_harness.cli
 NPM ?= npm
 
-.PHONY: install test test-all lint run-test sweep-dry-run sweep-fast sweep-frontier docker-build viewer docker-run dashboard dashboard-build report compare push status
+.PHONY: install test test-all lint run-test sweep-dry-run sweep-fast sweep-frontier docker-build viewer docker-run dashboard dashboard-build report compare push status api
 
 install:
 	$(PIP) install -e ".[dev]"
@@ -43,6 +43,9 @@ dashboard:
 
 dashboard-build:
 	$(NPM) --prefix deploy/frontend run build
+
+api:
+	$(PYTHON) -m uvicorn deploy.api_server:app --reload --port 8000
 
 report:
 	$(VBENCH) export $(RUN) --format json

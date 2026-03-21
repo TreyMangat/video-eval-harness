@@ -4,6 +4,8 @@ export type ModelSummary = {
   successful_parses: number;
   failed_parses: number;
   parse_success_rate: number;
+  exact_match_rate?: number | null;
+  fuzzy_match_rate?: number | null;
   avg_latency_ms: number | null;
   median_latency_ms: number | null;
   p95_latency_ms: number | null;

@@ -305,6 +305,8 @@ def run_benchmark(
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
     name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID (e.g. 'my-experiment')"),
+    public: bool = typer.Option(False, "--public", help="Enforce public cost limits (for Modal API)"),
+    llm_judge: bool = typer.Option(False, "--llm-judge", help="Use LLM to score agreement (~$0.001/pair)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -320,6 +322,8 @@ def run_benchmark(
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
     Use --max-segments to cap segment count and prevent expensive runs.
     Use --name to set a custom name in the run ID.
+    Use --public to enforce server-side cost limits for the public API.
+    Use --llm-judge to add LLM-based semantic agreement scoring.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -381,18 +385,51 @@ def run_benchmark(
     # Load action vocabulary if provided
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
 
+    # Public mode: validate upload before running
+    if public:
+        from .limits import validate_public_request
+
+        # Probe file size / duration for validation
+        p = Path(path)
+        if p.is_file():
+            file_size = p.stat().st_size
+            from .utils.ffmpeg import probe_video
+            try:
+                info = probe_video(p)
+                duration = info.duration_s
+            except Exception:
+                duration = 0.0
+        else:
+            file_size = 0
+            duration = 0.0
+
+        req_models = []
+        if filter_models:
+            req_models = filter_models
+        elif bench_cfg and bench_cfg.models:
+            req_models = bench_cfg.models
+        elif sweep_cfg:
+            req_models = sweep_cfg.benchmark.models if sweep_cfg.benchmark.models else list(models_cfg.keys())
+
+        is_valid, err_msg = validate_public_request(file_size, duration, req_models)
+        if not is_valid:
+            console.print(f"[red]Public mode rejected: {err_msg}[/red]")
+            raise typer.Exit(1)
+
+        console.print("[bold blue]Running in public mode with cost limits.[/bold blue]")
+
     # Branch: sweep mode vs single-config mode
     if sweep and sweep_cfg is not None:
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             dry_run, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context, max_segments, name,
+            vocab_context, max_segments, name, public_mode=public, use_llm_judge=llm_judge,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             num_frames, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context, max_segments, name,
+            vocab_context, max_segments, name, public_mode=public, use_llm_judge=llm_judge,
         )
 
     cache.close()
@@ -630,6 +667,74 @@ def _print_ground_truth_accuracy(
     console.print(gt_table)
 
 
+def _run_llm_judge(
+    results: list,
+    ground_truth_path: Optional[str] = None,
+) -> None:
+    """Run LLM-as-judge evaluation and print results."""
+    from .config import get_settings
+    from .evaluation.llm_judge import LLMJudge
+    from .evaluation.metrics import compute_agreement_matrix_llm, compute_ground_truth_accuracy_llm
+    from .providers.openrouter import OpenRouterProvider
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        console.print("[red]LLM judge requires OPENROUTER_API_KEY.[/red]")
+        return
+
+    provider = OpenRouterProvider(api_key=settings.openrouter_api_key)
+    judge = LLMJudge(provider)
+
+    models = sorted({r.model_name for r in results})
+
+    # Pairwise agreement via LLM
+    if len(models) > 1:
+        console.print("\n[bold]LLM-Judge Agreement Matrix[/bold] (semantic scoring)")
+        llm_agreement = compute_agreement_matrix_llm(results, judge)
+
+        ag_table = Table(title="LLM-Judge Agreement", show_lines=True)
+        ag_table.add_column("", style="cyan")
+        for m in models:
+            ag_table.add_column(m[:20], justify="right")
+
+        for m1 in models:
+            row = [m1[:20]]
+            for m2 in models:
+                val = llm_agreement.get(m1, {}).get(m2, 0)
+                row.append(f"{val:.0%}")
+            ag_table.add_row(*row)
+        console.print(ag_table)
+
+    # Ground truth accuracy via LLM
+    if ground_truth_path:
+        gt_labels = _load_ground_truth(ground_truth_path)
+        if gt_labels:
+            console.print("\n[bold]LLM-Judge Ground Truth Accuracy[/bold]")
+            llm_accuracy = compute_ground_truth_accuracy_llm(results, gt_labels, judge)
+
+            acc_table = Table(title="LLM-Judge Accuracy", show_lines=True)
+            acc_table.add_column("Model", style="cyan", no_wrap=True)
+            acc_table.add_column("LLM Accuracy", justify="right")
+            acc_table.add_column("LLM Similarity", justify="right")
+            acc_table.add_column("Evaluated Segs", justify="right")
+
+            for model, metrics in sorted(llm_accuracy.items()):
+                acc_table.add_row(
+                    model,
+                    f"{metrics['llm_accuracy']:.0%}",
+                    f"{metrics['llm_mean_similarity']:.3f}",
+                    str(int(metrics["evaluated_segments"])),
+                )
+            console.print(acc_table)
+
+    # Print judge stats
+    stats = judge.stats()
+    console.print(
+        f"\n  Judge stats: [cyan]{stats['calls']}[/cyan] calls, "
+        f"[cyan]${stats['total_cost_usd']:.4f}[/cyan] total cost"
+    )
+
+
 def _run_single(
     bench_cfg: "BenchmarkConfig",
     models_cfg: dict,
@@ -648,6 +753,8 @@ def _run_single(
     extra_context: Optional[dict] = None,
     max_segments: Optional[int] = None,
     run_name: Optional[str] = None,
+    public_mode: bool = False,
+    use_llm_judge: bool = False,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -775,7 +882,7 @@ def _run_single(
         extra_context=extra_context,
     )
 
-    results = runner.run(run_id, all_segments, frames_map, model_names)
+    results = runner.run(run_id, all_segments, frames_map, model_names, public_mode=public_mode)
 
     # 5. Summarize
     console.rule("[bold]Step 5: Summary[/bold]")
@@ -786,9 +893,12 @@ def _run_single(
     if gt_labels:
         _print_ground_truth_accuracy(results, gt_labels)
 
+    if use_llm_judge:
+        _run_llm_judge(results)
+
     # Export
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -810,6 +920,8 @@ def _run_sweep(
     extra_context: Optional[dict] = None,
     max_segments: Optional[int] = None,
     run_name: Optional[str] = None,
+    public_mode: bool = False,
+    use_llm_judge: bool = False,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -938,8 +1050,11 @@ def _run_sweep(
     if gt_labels:
         _print_ground_truth_accuracy(results, gt_labels)
 
+    if use_llm_judge:
+        _run_llm_judge(results)
+
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id, display_name=run_name)
+    export_results(results, run_dir, run_id, display_name=run_name, gt_labels=gt_labels)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -996,9 +1111,15 @@ def evaluate(
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     export: bool = typer.Option(True, "--export/--no-export"),
     group_by: Optional[str] = typer.Option(None, "--group-by", "-g", help="Group results by 'variant' for sweep runs"),
+    llm_judge: bool = typer.Option(False, "--llm-judge", help="Use LLM to score agreement (~$0.001/pair)"),
+    ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
-    """Evaluate and summarize results from a previous run."""
+    """Evaluate and summarize results from a previous run.
+
+    Use --llm-judge to add LLM-based semantic agreement scoring alongside
+    the default string-matching metrics.
+    """
     _setup(log_level)
     from .evaluation.summaries import export_results, print_run_summary, print_sweep_summary
     from .storage import Storage
@@ -1017,11 +1138,16 @@ def evaluate(
     else:
         print_run_summary(results, run_id)
 
+    # LLM-as-judge evaluation
+    if llm_judge:
+        _run_llm_judge(results, ground_truth)
+
     if export:
         run_cfg = storage.get_run(run_id)
         dn = run_cfg.display_name if run_cfg else None
+        gt_labels = _load_ground_truth(ground_truth) if ground_truth else None
         run_dir = storage.run_dir(run_id)
-        paths = export_results(results, run_dir, run_id, display_name=dn)
+        paths = export_results(results, run_dir, run_id, display_name=dn, gt_labels=gt_labels)
         for p in paths:
             console.print(f"  Exported: [cyan]{p}[/cyan]")
 

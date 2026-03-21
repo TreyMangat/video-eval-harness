@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from .llm_judge import LLMJudge
 
 from ..log import get_logger
 from ..schemas import GroundTruthLabel, ModelRunSummary, SegmentLabelResult
@@ -129,9 +132,14 @@ def compute_ground_truth_accuracy(
 ) -> dict[str, dict[str, float]]:
     """Compute accuracy against ground truth labels.
 
+    Matches by segment_id first, then falls back to video_id (for datasets
+    like UCF101 where each clip has a single whole-video GT label).
+
     Returns {model_name: {metric: value}}.
     """
-    gt_map = {gt.segment_id: gt for gt in ground_truth}
+    gt_by_segment = {gt.segment_id: gt for gt in ground_truth if gt.segment_id}
+    gt_by_video = {gt.video_id: gt for gt in ground_truth if gt.video_id}
+
     models = sorted({r.model_name for r in results})
     metrics: dict[str, dict[str, float]] = {}
 
@@ -143,12 +151,12 @@ def compute_ground_truth_accuracy(
         total = 0
 
         for r in model_results:
-            gt = gt_map.get(r.segment_id)
+            gt = gt_by_segment.get(r.segment_id) or gt_by_video.get(r.video_id)
             if gt is None:
                 continue
             total += 1
-            pred = (r.primary_action or "").lower().strip()
-            truth = gt.primary_action.lower().strip()
+            pred = _normalize_action((r.primary_action or ""))
+            truth = _normalize_action(gt.primary_action)
 
             sim = compute_action_similarity(pred, truth)
             sim_sum += sim
@@ -171,9 +179,10 @@ def compute_action_similarity(a: str, b: str) -> float:
     """Compute similarity between two action strings using tiered matching.
 
     Returns a float 0.0–1.0:
-        Tier 1 (exact):  normalized strings identical → 1.0
-        Tier 2 (overlap): word-set Jaccard > 0.5 → Jaccard score
-        Tier 3 (root):   head-noun overlap after stripping modifiers → 0.8
+        Tier 1   (exact):    normalized strings identical → 1.0
+        Tier 1.5 (synonym):  canonical verb match → 0.7–0.9 based on object overlap
+        Tier 2   (overlap):  word-set Jaccard > 0.33 → Jaccard score
+        Tier 3   (root):     head-noun overlap after stripping modifiers → 0.8
         Otherwise → 0.0
     """
     na = _normalize_action(a)
@@ -187,6 +196,23 @@ def compute_action_similarity(a: str, b: str) -> float:
     if len(na) > 3 and len(nb) > 3 and (na in nb or nb in na):
         return 0.9
 
+    # Tier 1.5: verb synonym match
+    words_a_list = na.split()
+    words_b_list = nb.split()
+    if words_a_list and words_b_list:
+        canon_a = _canonicalize_verb(words_a_list[0])
+        canon_b = _canonicalize_verb(words_b_list[0])
+        if canon_a == canon_b:
+            # Same canonical verb — check object overlap
+            obj_a = set(words_a_list[1:]) - _STOP_WORDS
+            obj_b = set(words_b_list[1:]) - _STOP_WORDS
+            if obj_a & obj_b:  # shared object words
+                return 0.9
+            elif not obj_a and not obj_b:
+                return 0.85
+            else:
+                return 0.7
+
     # Tokenize
     words_a = set(na.split())
     words_b = set(nb.split())
@@ -198,7 +224,7 @@ def compute_action_similarity(a: str, b: str) -> float:
     intersection = words_a & words_b
     union = words_a | words_b
     jaccard = len(intersection) / len(union) if union else 0.0
-    if jaccard > 0.5:
+    if jaccard > 0.33:
         return jaccard
 
     # Tier 3: extract head noun phrase (verb + nouns) and compare
@@ -229,6 +255,30 @@ _STOP_WORDS = frozenset({
     "and", "or", "but", "also", "still", "just", "only",
     "its", "their", "his", "her",
 })
+
+# Verb synonym map — canonicalizes action verbs so semantically equivalent
+# descriptions (e.g. "cutting vegetables" vs "chopping vegetables") score high.
+_VERB_SYNONYMS: dict[str, str] = {
+    "loading": "placing", "feeding": "placing", "putting": "placing",
+    "inserting": "placing", "setting": "placing",
+    "cutting": "slicing", "chopping": "slicing", "dicing": "slicing",
+    "trimming": "slicing",
+    "grabbing": "picking up", "taking": "picking up", "grasping": "picking up",
+    "retrieving": "picking up",
+    "walking": "moving", "running": "moving", "jogging": "moving",
+    "strolling": "moving",
+    "looking": "observing", "watching": "observing", "examining": "observing",
+    "inspecting": "observing", "viewing": "observing",
+    "talking": "speaking", "saying": "speaking", "discussing": "speaking",
+    "displaying": "showing", "presenting": "showing",
+    "assembling": "building", "constructing": "building",
+    "stirring": "mixing", "blending": "mixing", "whisking": "mixing",
+}
+
+
+def _canonicalize_verb(word: str) -> str:
+    """Map a verb to its canonical form, or return it unchanged."""
+    return _VERB_SYNONYMS.get(word, word)
 
 
 def _extract_root_phrase(s: str) -> str:
@@ -316,6 +366,88 @@ def _normalize_action(s: str) -> str:
     # Strip articles and common filler
     s = s.strip().rstrip(".")
     return s
+
+
+# ---------------------------------------------------------------------------
+# LLM-as-judge metrics
+# ---------------------------------------------------------------------------
+
+def compute_agreement_matrix_llm(
+    results: list[SegmentLabelResult],
+    judge: "LLMJudge",
+) -> dict[str, dict[str, float]]:
+    """Compute agreement using LLM judge instead of string matching.
+
+    Same interface as :func:`compute_agreement_matrix` — returns
+    ``{model_a: {model_b: mean_similarity}}``.  Exploits symmetry to halve
+    the number of judge calls.
+    """
+    by_segment: dict[str, dict[str, str]] = defaultdict(dict)
+    for r in results:
+        if r.parsed_success and r.primary_action:
+            by_segment[r.segment_id][r.model_name] = r.primary_action.strip()
+
+    models = sorted({r.model_name for r in results})
+    agreement: dict[str, dict[str, float]] = {}
+
+    for m1 in models:
+        agreement[m1] = {}
+        for m2 in models:
+            if m1 == m2:
+                agreement[m1][m2] = 1.0
+                continue
+            # Exploit symmetry
+            if m2 in agreement and m1 in agreement[m2]:
+                agreement[m1][m2] = agreement[m2][m1]
+                continue
+            sims: list[float] = []
+            for seg_labels in by_segment.values():
+                if m1 in seg_labels and m2 in seg_labels:
+                    result = judge.judge_pair(seg_labels[m1], seg_labels[m2])
+                    sims.append(result.get("similarity", 0.0))
+            agreement[m1][m2] = sum(sims) / len(sims) if sims else 0.0
+
+    return agreement
+
+
+def compute_ground_truth_accuracy_llm(
+    results: list[SegmentLabelResult],
+    ground_truth: list[GroundTruthLabel],
+    judge: "LLMJudge",
+) -> dict[str, dict[str, float]]:
+    """Score accuracy using LLM judge.
+
+    Same interface as :func:`compute_ground_truth_accuracy`.
+    """
+    gt_by_segment = {gt.segment_id: gt for gt in ground_truth if gt.segment_id}
+    gt_by_video = {gt.video_id: gt for gt in ground_truth if gt.video_id}
+
+    models = sorted({r.model_name for r in results})
+    metrics: dict[str, dict[str, float]] = {}
+
+    for model in models:
+        model_results = [r for r in results if r.model_name == model and r.parsed_success]
+        correct = 0
+        sim_sum = 0.0
+        total = 0
+
+        for r in model_results:
+            gt = gt_by_segment.get(r.segment_id) or gt_by_video.get(r.video_id)
+            if gt is None:
+                continue
+            total += 1
+            result = judge.judge_accuracy(r.primary_action or "", gt.primary_action)
+            sim_sum += result.get("similarity", 0.0)
+            if result.get("correct", False):
+                correct += 1
+
+        metrics[model] = {
+            "llm_accuracy": correct / total if total > 0 else 0.0,
+            "llm_mean_similarity": sim_sum / total if total > 0 else 0.0,
+            "evaluated_segments": total,
+        }
+
+    return metrics
 
 
 # ---------------------------------------------------------------------------

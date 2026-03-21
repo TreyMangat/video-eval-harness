@@ -4,6 +4,7 @@ import path from "path";
 import type {
   FramePreview,
   LabelResult,
+  ModelSummary,
   RunListItem,
   RunPayload,
   SegmentMedia,
@@ -12,6 +13,10 @@ import type {
 import { buildRunPayload, parseLabelResultRecord } from "./run-metrics";
 
 type CsvRecord = Record<string, string>;
+type JsonRunBundle = {
+  results: LabelResult[];
+  summary_overrides: Record<string, Partial<ModelSummary>>;
+};
 
 async function exists(targetPath: string): Promise<boolean> {
   try {
@@ -204,18 +209,82 @@ async function findRunArtifact(
   return null;
 }
 
-async function loadJsonResults(runId: string, dataDir?: string): Promise<LabelResult[]> {
+function parseSummaryOverrides(raw: unknown): Record<string, Partial<ModelSummary>> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  const source = raw as Record<string, unknown>;
+  const overrides: Record<string, Partial<ModelSummary>> = {};
+
+  const summaries = source.summaries;
+  if (summaries && typeof summaries === "object") {
+    for (const [modelName, value] of Object.entries(summaries as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      const record = value as Record<string, unknown>;
+      overrides[modelName] = {
+        exact_match_rate:
+          typeof record.exact_match_rate === "number" ? record.exact_match_rate : null,
+        fuzzy_match_rate:
+          typeof record.fuzzy_match_rate === "number" ? record.fuzzy_match_rate : null,
+      };
+    }
+  }
+
+  const groundTruth =
+    source.ground_truth_accuracy && typeof source.ground_truth_accuracy === "object"
+      ? (source.ground_truth_accuracy as Record<string, unknown>)
+      : source.accuracy && typeof source.accuracy === "object"
+        ? (source.accuracy as Record<string, unknown>)
+        : null;
+
+  if (groundTruth) {
+    for (const [modelName, value] of Object.entries(groundTruth)) {
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      const record = value as Record<string, unknown>;
+      overrides[modelName] = {
+        ...(overrides[modelName] ?? {}),
+        exact_match_rate:
+          typeof record.exact_match_rate === "number" ? record.exact_match_rate : null,
+        fuzzy_match_rate:
+          typeof record.fuzzy_match_rate === "number" ? record.fuzzy_match_rate : null,
+      };
+    }
+  }
+
+  return overrides;
+}
+
+async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRunBundle | null> {
   const artifactPath = await findRunArtifact(runId, "json", dataDir);
   if (!artifactPath) {
-    return [];
+    return null;
   }
 
   const raw = JSON.parse(await fs.readFile(artifactPath, "utf-8")) as unknown;
-  if (!Array.isArray(raw)) {
-    return [];
+  if (Array.isArray(raw)) {
+    return {
+      results: raw.map((record) => parseLabelResultRecord(record as Record<string, unknown>)),
+      summary_overrides: {},
+    };
+  }
+  if (!raw || typeof raw !== "object") {
+    return null;
   }
 
-  return raw.map((record) => parseLabelResultRecord(record as Record<string, unknown>));
+  const record = raw as Record<string, unknown>;
+  const results = Array.isArray(record.results)
+    ? record.results.map((entry) => parseLabelResultRecord(entry as Record<string, unknown>))
+    : [];
+
+  return {
+    results,
+    summary_overrides: parseSummaryOverrides(record),
+  };
 }
 
 async function loadCsvResults(runId: string, dataDir?: string): Promise<LabelResult[]> {
@@ -228,12 +297,18 @@ async function loadCsvResults(runId: string, dataDir?: string): Promise<LabelRes
   return parseCsv(raw).map((record) => parseLabelResultRecord(record));
 }
 
-async function loadRunResults(runId: string, dataDir?: string): Promise<LabelResult[]> {
+async function loadRunResults(
+  runId: string,
+  dataDir?: string
+): Promise<JsonRunBundle> {
   const jsonResults = await loadJsonResults(runId, dataDir);
-  if (jsonResults.length > 0) {
+  if (jsonResults && jsonResults.results.length > 0) {
     return jsonResults;
   }
-  return loadCsvResults(runId, dataDir);
+  return {
+    results: await loadCsvResults(runId, dataDir),
+    summary_overrides: {},
+  };
 }
 
 async function loadSweepSummary(
@@ -360,13 +435,13 @@ export async function loadArtifactRun(
   runId: string,
   dataDir?: string
 ): Promise<RunPayload | null> {
-  const results = await loadRunResults(runId, dataDir);
-  if (results.length === 0) {
+  const runData = await loadRunResults(runId, dataDir);
+  if (runData.results.length === 0) {
     return null;
   }
 
   const sweepSummary = await loadSweepSummary(runId, dataDir);
-  return buildRunPayload(runId, results, sweepSummary);
+  return buildRunPayload(runId, runData.results, sweepSummary, runData.summary_overrides);
 }
 
 export async function loadArtifactSegmentMedia(

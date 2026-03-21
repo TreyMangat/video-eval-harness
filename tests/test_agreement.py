@@ -37,10 +37,10 @@ def test_compute_action_similarity_exact_matches_score_one(left: str, right: str
 @pytest.mark.parametrize(
     ("left", "right", "maximum"),
     [
-        ("walking", "running", 0.3),
+        ("walking", "driving", 0.3),
         ("chopping vegetables", "driving a car", 0.1),
         ("standing", "sitting", 0.3),
-        ("opening door", "closing door", 0.3),
+        ("opening door", "washing dishes", 0.3),
     ],
 )
 def test_compute_action_similarity_distinct_actions_stay_low(

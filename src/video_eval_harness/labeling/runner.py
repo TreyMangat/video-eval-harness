@@ -52,6 +52,7 @@ class LabelingRunner:
         segments: list[Segment],
         frames_map: dict[str, ExtractedFrames],
         model_names: Optional[list[str]] = None,
+        public_mode: bool = False,
     ) -> list[SegmentLabelResult]:
         """Run all configured models against all segments.
 
@@ -60,12 +61,35 @@ class LabelingRunner:
             segments: List of segments to label.
             frames_map: Mapping of segment_id -> ExtractedFrames.
             model_names: Optional subset of models to run. Defaults to all.
+            public_mode: If True, enforce public cost limits from limits.py.
 
         Returns:
             List of all label results.
         """
         if model_names is None:
             model_names = list(self.models.keys())
+
+        if public_mode:
+            from ..limits import PUBLIC_LIMITS
+
+            # Filter to allowed models only
+            allowed = PUBLIC_LIMITS["allowed_models"]
+            model_names = [m for m in model_names if m in allowed]
+            if not model_names:
+                logger.warning("No allowed models for public mode. Aborting.")
+                return []
+
+            # Cap segments
+            max_seg = PUBLIC_LIMITS["max_segments"]
+            if len(segments) > max_seg:
+                logger.info(f"Public mode: capping segments from {len(segments)} to {max_seg}")
+                segments = segments[:max_seg]
+
+            logger.info(
+                f"Running in public mode with limits: "
+                f"models={model_names}, max_segments={max_seg}, "
+                f"max_concurrent={PUBLIC_LIMITS['max_concurrent_jobs']}"
+            )
 
         # Build work items: (segment, model_name)
         work_items = []

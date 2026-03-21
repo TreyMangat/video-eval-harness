@@ -1,17 +1,13 @@
-import Link from "next/link";
-
 import {
   AgreementMatrixCard,
   MetricDeltaTableCard,
-  RunMetadataCard,
-  VariantHeatmapCard,
 } from "../../components/analysis-panels";
+import { TopNav } from "../../components/navigation";
 import {
   buildModelDeltaRows,
-  buildSweepDeltaMatrix,
-  getSweepData,
+  displayRunName,
 } from "../../lib/analysis";
-import { listArtifactRuns, loadArtifactRun } from "../../lib/local-runs";
+import { listRuns, loadRun } from "../../lib/run-source";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,187 +33,93 @@ export default async function CompareRunsPage({
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const dataDir = readFirst(resolvedSearchParams.dataDir);
-  const availableRuns = await listArtifactRuns(dataDir);
+  const dataDir = readFirst(resolvedSearchParams.dataDir) ?? process.env.VBENCH_RUNS_DIR;
+  const availableRuns = await listRuns(dataDir);
   const defaultRuns = defaultCompareRunIds(availableRuns.map((run) => run.run_id));
   const runAId = readFirst(resolvedSearchParams.runA) ?? defaultRuns.runA;
   const runBId = readFirst(resolvedSearchParams.runB) ?? defaultRuns.runB;
 
-  const leftRun = runAId ? await loadArtifactRun(runAId, dataDir) : null;
-  const rightRun = runBId ? await loadArtifactRun(runBId, dataDir) : null;
-  const leftSweep = leftRun ? getSweepData(leftRun) : null;
-  const rightSweep = rightRun ? getSweepData(rightRun) : null;
-  const deltaRows =
-    leftRun && rightRun ? buildModelDeltaRows(leftRun, rightRun) : [];
-  const sweepDelta =
-    leftRun && rightRun
-      ? buildSweepDeltaMatrix(leftSweep, rightSweep, leftRun.models, rightRun.models)
-      : null;
+  const leftRun = runAId ? await loadRun(runAId, dataDir) : null;
+  const rightRun = runBId ? await loadRun(runBId, dataDir) : null;
+  const deltaRows = leftRun && rightRun ? buildModelDeltaRows(leftRun, rightRun) : [];
+  const leftLabel = leftRun
+    ? displayRunName(leftRun.run_id, leftRun.config.created_at)
+    : "Left run";
+  const rightLabel = rightRun
+    ? displayRunName(rightRun.run_id, rightRun.config.created_at)
+    : "Right run";
 
   return (
     <main className="analysis-shell">
-      <div className="analysis-topbar">
-        <div>
-          <p className="eyebrow">Run Comparison</p>
-          <h1 className="analysis-title">VBench Compare</h1>
-          <p className="helper-copy">
-            Side-by-side view of two exported runs, including sweep deltas when both runs have
-            variant data.
+      <TopNav active="compare" />
+
+      <section className="visual-card">
+        <div className="section-heading">
+          <p className="section-eyebrow">Compare</p>
+          <h1 className="run-title">What changed between these runs?</h1>
+          <p className="chart-desc">
+            Pick a baseline and a comparison run to see who improved, who regressed, and whether
+            the agreement pattern changed.
           </p>
         </div>
-        <div className="analysis-actions">
-          <Link href="/" className="ghost-btn">
-            Back to Dashboard
-          </Link>
-          {leftRun ? (
-            <Link href={`/report/${leftRun.run_id}`} className="ghost-btn">
-              Report A
-            </Link>
-          ) : null}
-          {rightRun ? (
-            <Link href={`/report/${rightRun.run_id}`} className="ghost-btn">
-              Report B
-            </Link>
-          ) : null}
-        </div>
-      </div>
 
-      <section className="raw-section">
-        <h3>Select Runs</h3>
-        <p className="chart-desc">
-          Compare two exported runs using the same JSON artifact loading path as the dashboard.
-        </p>
         <form method="get" className="compare-form">
           <label className="field">
-            <span>Run A</span>
+            <span>Baseline run</span>
             <select name="runA" defaultValue={runAId}>
               {availableRuns.map((run) => (
                 <option key={`left-${run.run_id}`} value={run.run_id}>
-                  {run.run_id}
+                  {displayRunName(run.run_id, run.created_at)}
                 </option>
               ))}
             </select>
           </label>
           <label className="field">
-            <span>Run B</span>
+            <span>Comparison run</span>
             <select name="runB" defaultValue={runBId}>
               {availableRuns.map((run) => (
                 <option key={`right-${run.run_id}`} value={run.run_id}>
-                  {run.run_id}
+                  {displayRunName(run.run_id, run.created_at)}
                 </option>
               ))}
             </select>
           </label>
           {dataDir ? <input type="hidden" name="dataDir" value={dataDir} /> : null}
-          <button type="submit" className="primary-btn">
-            Compare Runs
-          </button>
+          <div className="compare-submit-row">
+            <button type="submit" className="primary-btn">
+              Update comparison
+            </button>
+          </div>
         </form>
       </section>
 
       {!leftRun || !rightRun ? (
-        <section className="empty-hero">
+        <section className="visual-card empty-hero">
           <h2>Pick two runs to compare</h2>
-          <p>Once both runs are selected, the page will render metric deltas and sweep changes.</p>
+          <p>Once both runs are selected, this page will show the metric deltas and agreement matrices.</p>
         </section>
       ) : (
         <>
-          <div className="analysis-grid two-up">
-            <RunMetadataCard
-              title="Run A"
-              runId={leftRun.run_id}
-              createdAt={leftRun.config.created_at}
-              videoLabel={
-                leftRun.videos[0]?.filename ||
-                leftRun.videos[0]?.video_id ||
-                leftRun.config.video_ids[0] ||
-                "Unknown video"
-              }
-              promptVersion={leftRun.config.prompt_version}
-              models={leftRun.models}
-              segments={leftRun.segments.length}
-              extraRows={[
-                {
-                  label: "Sweep Variants",
-                  value: leftSweep ? String(leftSweep.variants.length) : "No sweep data",
-                },
-              ]}
-            />
-            <RunMetadataCard
-              title="Run B"
-              runId={rightRun.run_id}
-              createdAt={rightRun.config.created_at}
-              videoLabel={
-                rightRun.videos[0]?.filename ||
-                rightRun.videos[0]?.video_id ||
-                rightRun.config.video_ids[0] ||
-                "Unknown video"
-              }
-              promptVersion={rightRun.config.prompt_version}
-              models={rightRun.models}
-              segments={rightRun.segments.length}
-              extraRows={[
-                {
-                  label: "Sweep Variants",
-                  value: rightSweep ? String(rightSweep.variants.length) : "No sweep data",
-                },
-              ]}
-            />
-          </div>
-
           <MetricDeltaTableCard
-            title="Per-Model Metric Deltas"
-            description="Green means the right-hand run improved; latency improvements are green when they go down."
+            title="How did each model change?"
+            description="Green marks an improvement. For latency, green means the model got faster."
             rows={deltaRows}
-            leftLabel="Run A"
-            rightLabel="Run B"
+            leftLabel={leftLabel}
+            rightLabel={rightLabel}
           />
 
           <div className="analysis-grid two-up">
             <AgreementMatrixCard
-              title={`Agreement Matrix: ${leftRun.run_id}`}
+              title={leftLabel}
+              description="Pairwise agreement for the baseline run."
               matrix={leftRun.agreement}
             />
             <AgreementMatrixCard
-              title={`Agreement Matrix: ${rightRun.run_id}`}
+              title={rightLabel}
+              description="Pairwise agreement for the comparison run."
               matrix={rightRun.agreement}
             />
           </div>
-
-          {sweepDelta ? (
-            <div className="analysis-grid three-up">
-              <VariantHeatmapCard
-                title={`Sweep Heatmap: ${leftRun.run_id}`}
-                description="Model x variant parse success for Run A."
-                models={sweepDelta.models}
-                variants={sweepDelta.variants}
-                matrix={sweepDelta.left_matrix}
-              />
-              <VariantHeatmapCard
-                title={`Sweep Heatmap: ${rightRun.run_id}`}
-                description="Model x variant parse success for Run B."
-                models={sweepDelta.models}
-                variants={sweepDelta.variants}
-                matrix={sweepDelta.right_matrix}
-              />
-              <VariantHeatmapCard
-                title="Sweep Change"
-                description="Run B minus Run A."
-                models={sweepDelta.models}
-                variants={sweepDelta.variants}
-                matrix={sweepDelta.delta_matrix}
-                deltaMode
-              />
-            </div>
-          ) : (
-            <section className="agreement-section">
-              <h3>Sweep Comparison</h3>
-              <p className="chart-desc">
-                One or both selected runs do not have sweep exports, so the heatmap change view is
-                unavailable.
-              </p>
-            </section>
-          )}
         </>
       )}
     </main>

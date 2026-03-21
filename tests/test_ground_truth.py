@@ -54,5 +54,5 @@ def test_compute_ground_truth_accuracy_reports_exact_and_fuzzy_rates() -> None:
     assert metrics["model-a"]["fuzzy_match_rate"] == pytest.approx(1.0)
     assert metrics["model-a"]["evaluated_segments"] == 3
     assert metrics["model-b"]["exact_match_rate"] == pytest.approx(1 / 3)
-    assert metrics["model-b"]["fuzzy_match_rate"] == pytest.approx(2 / 3)
+    assert metrics["model-b"]["fuzzy_match_rate"] == pytest.approx(1.0)
     assert metrics["model-b"]["evaluated_segments"] == 3
