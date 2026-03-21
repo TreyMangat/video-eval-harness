@@ -224,6 +224,7 @@ def export_results(
     output_dir: str | Path,
     run_id: str,
     formats: list[str] | None = None,
+    display_name: str | None = None,
 ) -> list[Path]:
     """Export results to CSV, Parquet, and/or JSON.
 
@@ -251,8 +252,16 @@ def export_results(
         logger.info(f"Exported Parquet: {parquet_path}")
 
     if "json" in formats:
+        import json as _json
+
         json_path = output_dir / f"{run_id}_results.json"
-        json_path.write_text(df.to_json(orient="records", indent=2), encoding="utf-8")
+        records = _json.loads(df.to_json(orient="records"))
+        envelope = {
+            "run_id": run_id,
+            "display_name": display_name,
+            "results": records,
+        }
+        json_path.write_text(_json.dumps(envelope, indent=2), encoding="utf-8")
         exported.append(json_path)
         logger.info(f"Exported JSON: {json_path}")
 

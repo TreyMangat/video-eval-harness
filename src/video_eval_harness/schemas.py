@@ -121,6 +121,7 @@ class RunConfig(BaseModel):
     extraction_config: dict = Field(default_factory=dict)
     video_ids: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 class ModelRunSummary(_NoModelNs):

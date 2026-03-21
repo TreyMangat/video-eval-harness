@@ -48,8 +48,11 @@ def test_export_results_json_round_trips(tmp_path: Path) -> None:
     json_path = paths[0]
     payload = json.loads(json_path.read_text(encoding="utf-8"))
 
-    assert len(payload) == 2
-    assert payload[0]["model_name"] == "model-a"
-    assert payload[0]["primary_action"] == "walking"
-    assert payload[0]["extraction_label"] == "uniform_8f"
-    assert {"model_name", "primary_action", "extraction_label"} <= payload[0].keys()
+    assert payload["run_id"] == "run_export_json"
+    assert payload["display_name"] is None
+    records = payload["results"]
+    assert len(records) == 2
+    assert records[0]["model_name"] == "model-a"
+    assert records[0]["primary_action"] == "walking"
+    assert records[0]["extraction_label"] == "uniform_8f"
+    assert {"model_name", "primary_action", "extraction_label"} <= records[0].keys()

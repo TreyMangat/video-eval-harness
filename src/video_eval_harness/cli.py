@@ -728,10 +728,12 @@ def _run_single(
         segmentation_config=seg_cfg.model_dump(),
         extraction_config=ext_cfg.model_dump(),
         video_ids=[v.video_id for v in videos],
+        display_name=run_name,
     )
     storage.save_run(run_config)
 
-    console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
+    display = f"[bold]{run_name}[/bold] ({run_id})" if run_name else f"[cyan]{run_id}[/cyan]"
+    console.print(f"  Run: {display}")
     console.print(f"  Models: {', '.join(model_names)}")
     console.print(f"  Window: {seg_cfg.window_size_s}s | Frames: {ext_cfg.num_frames} | Prompt: {effective_prompt}")
 
@@ -760,7 +762,7 @@ def _run_single(
 
     # Export
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id)
+    export_results(results, run_dir, run_id, display_name=run_name)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -875,11 +877,13 @@ def _run_sweep(
         extraction_config=bench_cfg.extraction.model_dump(),
         video_ids=[v.video_id for v in videos],
         notes=f"sweep:{sweep_cfg.sweep_id}",
+        display_name=run_name,
     )
     storage.save_run(run_config)
 
     console.rule("[bold]Step 3: Sweep — Extract & Label[/bold]")
-    console.print(f"  Run ID: [cyan]{run_id}[/cyan]")
+    display = f"[bold]{run_name}[/bold] ({run_id})" if run_name else f"[cyan]{run_id}[/cyan]"
+    console.print(f"  Run: {display}")
     console.print(f"  Sweep ID: [cyan]{sweep_cfg.sweep_id}[/cyan]")
 
     # Build video_paths map for runner.run_sweep
@@ -909,7 +913,7 @@ def _run_sweep(
         _print_ground_truth_accuracy(results, gt_labels)
 
     run_dir = storage.run_dir(run_id)
-    export_results(results, run_dir, run_id)
+    export_results(results, run_dir, run_id, display_name=run_name)
     console.print(f"\nResults saved to: [cyan]{run_dir}[/cyan]")
 
 
@@ -988,8 +992,10 @@ def evaluate(
         print_run_summary(results, run_id)
 
     if export:
+        run_cfg = storage.get_run(run_id)
+        dn = run_cfg.display_name if run_cfg else None
         run_dir = storage.run_dir(run_id)
-        paths = export_results(results, run_dir, run_id)
+        paths = export_results(results, run_dir, run_id, display_name=dn)
         for p in paths:
             console.print(f"  Exported: [cyan]{p}[/cyan]")
 
@@ -1487,8 +1493,10 @@ def export(
         console.print(f"[yellow]No results found for run {run_id}[/yellow]")
         raise typer.Exit(1)
 
+    run_cfg = storage.get_run(run_id)
+    dn = run_cfg.display_name if run_cfg else None
     formats = [f.strip() for f in format.split(",")]
-    paths = export_results(results, output_dir, run_id, formats)
+    paths = export_results(results, output_dir, run_id, formats, display_name=dn)
     for p in paths:
         console.print(f"  [green]OK[/green] {p}")
 
@@ -1525,9 +1533,13 @@ def export_sweep_summary(
 
     sweep_data = compute_sweep_metrics(results)
 
+    run_cfg = storage.get_run(run_id)
+    dn = run_cfg.display_name if run_cfg else None
+
     # Serialize dataclass objects to dicts
     summary = {
         "run_id": run_id,
+        "display_name": dn,
         "cells": [asdict(c) for c in sweep_data["cells"]],
         "stability": [asdict(s) for s in sweep_data["stability"]],
         "agreement_by_variant": sweep_data["agreement_by_variant"],
@@ -1560,32 +1572,38 @@ def inspect_run(
             return
 
         table = Table(title="All Runs", show_lines=True)
-        table.add_column("Run ID", style="cyan", no_wrap=True)
+        table.add_column("Name", style="cyan", no_wrap=True)
         table.add_column("Date", justify="right")
         table.add_column("Models", justify="right")
         table.add_column("Videos", justify="right")
         table.add_column("Prompt")
 
         for r in runs:
-            # Mark legacy IDs for clarity
-            rid = r.run_id
-            if rid.startswith("run_") and len(rid) == 16 and "_" not in rid[4:]:
-                rid = f"{rid} (legacy)"
+            # Use display_name if set, otherwise derive from run_id
+            if r.display_name:
+                label = r.display_name
+            elif r.run_id.startswith("run_") and len(r.run_id) == 16 and "_" not in r.run_id[4:]:
+                label = "(legacy run)"
+            else:
+                label = r.run_id
             table.add_row(
-                rid,
+                label,
                 r.created_at[:16].replace("T", " "),
                 f"{len(r.models)} model{'s' if len(r.models) != 1 else ''}",
                 str(len(r.video_ids)),
                 r.prompt_version,
             )
         console.print(table)
+        console.print("\n[dim]Use 'vbench inspect-run <run_id>' for details.[/dim]")
     else:
         run_config = storage.get_run(run_id)
         if run_config is None:
             console.print(f"[red]Run not found: {run_id}[/red]")
             raise typer.Exit(1)
 
-        console.print(f"Run: [cyan]{run_config.run_id}[/cyan]")
+        if run_config.display_name:
+            console.print(f"Name: [bold]{run_config.display_name}[/bold]")
+        console.print(f"Run ID: [cyan]{run_config.run_id}[/cyan]")
         console.print(f"Created: {run_config.created_at}")
         console.print(f"Models: {', '.join(run_config.models)}")
         console.print(f"Videos: {len(run_config.video_ids)}")
