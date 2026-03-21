@@ -301,6 +301,7 @@ def run_benchmark(
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
+    max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -314,6 +315,7 @@ def run_benchmark(
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
     Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
+    Use --max-segments to cap segment count and prevent expensive runs.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -374,13 +376,13 @@ def run_benchmark(
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             dry_run, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context,
+            vocab_context, max_segments,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             num_frames, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
-            vocab_context,
+            vocab_context, max_segments,
         )
 
     cache.close()
@@ -472,6 +474,36 @@ def _auto_window(videos: list, seg_cfg, window_override: Optional[float]) -> Non
             f"  Auto-selected window size: [cyan]{auto_window:.0f}s[/cyan] "
             f"(max video duration: {max_duration:.0f}s)"
         )
+
+
+def _budget_guard(total_calls: int, dry_run: bool = False) -> None:
+    """Warn and prompt if total API calls exceed the safety threshold."""
+    if dry_run or total_calls <= 500:
+        return
+
+    est_cost = total_calls * 0.005  # rough average
+    console.print(
+        f"\n[bold yellow]Warning:[/bold yellow] This run will make "
+        f"[bold]{total_calls:,}[/bold] API calls (~${est_cost:.2f} estimated).\n"
+        f"  Use --max-segments to limit, or --dry-run to preview."
+    )
+    typer.confirm("Continue?", abort=True)
+
+
+def _subsample_segments(segments: list, max_segments: Optional[int]) -> list:
+    """Uniformly subsample segments if count exceeds max_segments."""
+    if max_segments is None or len(segments) <= max_segments:
+        return segments
+
+    original = len(segments)
+    step = len(segments) / max_segments
+    indices = [int(i * step) for i in range(max_segments)]
+    subsampled = [segments[i] for i in indices]
+    console.print(
+        f"  Subsampled from [yellow]{original}[/yellow] to "
+        f"[cyan]{len(subsampled)}[/cyan] segments (--max-segments {max_segments})"
+    )
+    return subsampled
 
 
 def _make_ego4d_adapter(manifest: Optional[str], path: str) -> "Ego4DAdapter":
@@ -586,6 +618,7 @@ def _run_single(
     gt_labels: Optional[list] = None,
     dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
+    max_segments: Optional[int] = None,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -640,6 +673,14 @@ def _run_single(
         storage.save_segments(segs)
         all_segments.extend(segs)
         console.print(f"  {v.video_id}: {len(segs)} segments")
+
+    all_segments = _subsample_segments(all_segments, max_segments)
+
+    # Budget guard
+    num_calls = len(all_segments) * len(
+        (bench_cfg.models if bench_cfg.models else list(models_cfg.keys()))
+    )
+    _budget_guard(num_calls, dry_run=False)
 
     # 3. Extract frames
     console.rule("[bold]Step 3: Extract Frames[/bold]")
@@ -735,6 +776,7 @@ def _run_sweep(
     gt_labels: Optional[list] = None,
     dataset_adapter: Optional[object] = None,
     extra_context: Optional[dict] = None,
+    max_segments: Optional[int] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -795,11 +837,16 @@ def _run_sweep(
         all_segments.extend(segs)
         console.print(f"  {v.video_id}: {len(segs)} segments")
 
+    all_segments = _subsample_segments(all_segments, max_segments)
+
     # Sweep plan preview
     orchestrator = SweepOrchestrator(sweep_cfg)
     estimate = orchestrator.estimate_api_calls(len(all_segments))
 
     _print_sweep_plan(sweep_cfg, orchestrator, estimate)
+
+    # Budget guard
+    _budget_guard(estimate["total_calls"], dry_run=dry_run)
 
     if dry_run:
         console.print("\n[yellow]Dry run — no API calls made.[/yellow]")
@@ -957,6 +1004,7 @@ def sweep(
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters (buildai)"),
     action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
+    max_segments: Optional[int] = typer.Option(None, "--max-segments", help="Max segments (subsample if exceeded)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -967,6 +1015,7 @@ def sweep(
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
     Use --adapter buildai --data-dir /path/to/data for Build.ai datasets.
     Use --action-vocabulary to constrain labels to a fixed taxonomy.
+    Use --max-segments to cap segment count and prevent expensive runs.
     """
     _setup(log_level)
     from .caching import ResponseCache
@@ -1002,7 +1051,7 @@ def sweep(
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
         dry_run, artifacts_dir, log_level, filter_list, gt_labels, dataset_adapter,
-        vocab_context,
+        vocab_context, max_segments,
     )
 
     cache.close()
