@@ -191,9 +191,6 @@
       "qwen3.5-vl": 1.0
     }
   },
-  "llm_agreement": null,
-  "llm_accuracy": null,
-  "judge_stats": null,
   "summaries": {
     "gemini-3.1-pro": {
       "model_name": "gemini-3.1-pro",
@@ -205,7 +202,9 @@
       "median_latency_ms": null,
       "p95_latency_ms": null,
       "total_estimated_cost": null,
-      "avg_confidence": 0.9545000000000001
+      "avg_confidence": 0.9545000000000001,
+      "exact_match_rate": 0.038461538461538464,
+      "fuzzy_match_rate": 0.34615384615384615
     },
     "gpt-5.4": {
       "model_name": "gpt-5.4",
@@ -217,7 +216,9 @@
       "median_latency_ms": null,
       "p95_latency_ms": null,
       "total_estimated_cost": null,
-      "avg_confidence": 0.9235
+      "avg_confidence": 0.9235,
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.38461538461538464
     },
     "llama-4-maverick": {
       "model_name": "llama-4-maverick",
@@ -229,7 +230,9 @@
       "median_latency_ms": null,
       "p95_latency_ms": null,
       "total_estimated_cost": null,
-      "avg_confidence": 0.91625
+      "avg_confidence": 0.91625,
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.34615384615384615
     },
     "qwen3.5-vl": {
       "model_name": "qwen3.5-vl",
@@ -241,7 +244,9 @@
       "median_latency_ms": 29044.076600001063,
       "p95_latency_ms": 50433.639399999265,
       "total_estimated_cost": 0.04826426,
-      "avg_confidence": 0.9354054054054056
+      "avg_confidence": 0.9354054054054056,
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.4166666666666667
     }
   },
   "sweep_summary": {
@@ -446,7 +451,32 @@
     }
   },
   "cost_estimate_usd": 0.048264,
-  "accuracy_by_model": null,
+  "accuracy_by_model": {
+    "gemini-3.1-pro": {
+      "exact_match_rate": 0.038461538461538464,
+      "fuzzy_match_rate": 0.34615384615384615,
+      "mean_similarity": 0.2692307692307693,
+      "evaluated_segments": 26
+    },
+    "gpt-5.4": {
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.38461538461538464,
+      "mean_similarity": 0.30000000000000004,
+      "evaluated_segments": 26
+    },
+    "llama-4-maverick": {
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.34615384615384615,
+      "mean_similarity": 0.26538461538461544,
+      "evaluated_segments": 26
+    },
+    "qwen3.5-vl": {
+      "exact_match_rate": 0.0,
+      "fuzzy_match_rate": 0.4166666666666667,
+      "mean_similarity": 0.3333333333333333,
+      "evaluated_segments": 24
+    }
+  },
   "results": [
     {
       "run_id": "run_20260321_frontier-accuracy_sweep_c4c1",
