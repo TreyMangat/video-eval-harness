@@ -1058,6 +1058,153 @@ def sweep(
 
 
 @app.command()
+def test_suite(
+    videos: str = typer.Option("test_videos", "--videos", "-v", help="Video directory"),
+    tier: str = typer.Option("fast", "--tier", "-t", help="Model tier: fast or frontier"),
+    max_segments: int = typer.Option(25, "--max-segments", help="Max segments per run"),
+    models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Run the standard benchmark test suite.
+
+    The recommended way to run benchmarks. Encapsulates best practices:
+    fast models with 2 extraction variants, max 25 segments, auto-windowing.
+
+    Shows a cost estimate and asks for confirmation before making API calls.
+    """
+    _setup(log_level)
+    import math
+
+    from .config import load_benchmark_config, load_models_config, get_settings
+    from .caching import ResponseCache
+    from .storage import Storage
+    from .sweep import SweepAxis, SweepConfig
+    from .utils.ffmpeg import probe_video
+
+    # Select config by tier
+    if tier == "frontier":
+        config_file = str(DEFAULT_CONFIGS / "benchmark.yaml")
+    else:
+        config_file = str(DEFAULT_CONFIGS / "benchmark_fast.yaml")
+
+    settings = get_settings()
+    bench_cfg = load_benchmark_config(config_file)
+    models_cfg = load_models_config(models_file)
+
+    model_names = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
+
+    # Standard sweep: 2 variants (4f + 8f, uniform only)
+    frames_list = [4, 8]
+    methods_list = ["uniform"]
+    num_variants = len(frames_list) * len(methods_list)
+
+    # Probe video durations for estimate
+    videos_path = Path(videos)
+    if not videos_path.is_dir():
+        console.print(f"[red]Video directory not found: {videos}[/red]")
+        raise typer.Exit(1)
+
+    from .adapters import DirectoryAdapter
+    entries = DirectoryAdapter(videos_path).list_videos()
+    if not entries:
+        console.print(f"[red]No video files found in {videos}[/red]")
+        raise typer.Exit(1)
+
+    durations = []
+    for e in entries:
+        try:
+            info = probe_video(e.path)
+            durations.append(info.duration_s)
+        except Exception:
+            pass
+
+    if not durations:
+        console.print("[red]Could not probe any video files.[/red]")
+        raise typer.Exit(1)
+
+    total_duration = sum(durations)
+    max_duration = max(durations)
+
+    # Auto-window
+    if max_duration < 60:
+        auto_window = 10.0
+    elif max_duration < 300:
+        auto_window = 30.0
+    elif max_duration < 1800:
+        auto_window = 60.0
+    else:
+        auto_window = 120.0
+
+    total_segments = sum(math.ceil(d / auto_window) for d in durations)
+    effective_segments = min(total_segments, max_segments)
+    total_calls = effective_segments * len(model_names) * num_variants
+
+    # Show estimate
+    console.rule("[bold]Test Suite Plan[/bold]")
+    table = Table(show_lines=True)
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Videos", f"{len(durations)} clips ({total_duration:.0f}s total)")
+    table.add_row("Tier", f"[bold]{tier}[/bold]")
+    table.add_row("Models", f"{len(model_names)} ({', '.join(model_names[:3])}{'...' if len(model_names) > 3 else ''})")
+    table.add_row("Prompt", bench_cfg.prompt_version)
+    table.add_row("Window", f"{auto_window:.0f}s (auto)")
+    table.add_row("Variants", f"{num_variants} ({', '.join(f'{f}f' for f in frames_list)} x {', '.join(methods_list)})")
+    if total_segments > max_segments:
+        table.add_row("Segments", f"{effective_segments} (capped from {total_segments})")
+    else:
+        table.add_row("Segments", str(effective_segments))
+    table.add_row("API calls", f"[bold yellow]{total_calls}[/bold yellow]")
+    table.add_row("Est. cost", f"${total_calls * 0.005:.2f} – ${total_calls * 0.015:.2f}")
+    console.print(table)
+
+    typer.confirm("\nProceed with test suite?", abort=True)
+
+    # Run the sweep
+    storage = Storage(artifacts_dir)
+    cache = ResponseCache()
+    axis = SweepAxis(num_frames=frames_list, methods=methods_list)
+    sweep_cfg = SweepConfig(benchmark=bench_cfg, axis=axis)
+
+    _run_sweep(
+        sweep_cfg, models_cfg, videos, settings, storage, cache,
+        None, None,  # prompt_version, window (use config defaults + auto)
+        False, artifacts_dir, log_level,
+        None, None, None, {},  # filter_models, gt_labels, dataset_adapter, extra_context
+        max_segments,
+    )
+
+    # Export sweep summary
+    runs = storage.list_runs()
+    if runs:
+        latest_run = runs[0]
+        results = storage.get_run_results(latest_run.run_id)
+        has_sweep = any(r.extraction_variant_id for r in results)
+        if has_sweep:
+            import json
+            from dataclasses import asdict
+            from .evaluation.metrics import compute_sweep_metrics
+
+            sweep_data = compute_sweep_metrics(results)
+            summary = {
+                "run_id": latest_run.run_id,
+                "cells": [asdict(c) for c in sweep_data["cells"]],
+                "stability": [asdict(s) for s in sweep_data["stability"]],
+                "agreement_by_variant": sweep_data["agreement_by_variant"],
+            }
+            run_dir = storage.run_dir(latest_run.run_id)
+            out_path = Path(run_dir) / f"{latest_run.run_id}_sweep_summary.json"
+            out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            console.print(f"\nSweep summary: [cyan]{out_path}[/cyan]")
+
+        console.print("\nView results:    [bold]streamlit run src/video_eval_harness/viewer.py[/bold]")
+
+    cache.close()
+
+
+@app.command()
 def estimate(
     path: str = typer.Argument(..., help="Video file or directory"),
     config_file: str = typer.Option(str(DEFAULT_CONFIGS / "benchmark.yaml"), "--config", "-c"),
