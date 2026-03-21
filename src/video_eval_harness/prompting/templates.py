@@ -102,6 +102,51 @@ Respond with ONLY a JSON object:
 }
 """
 
+ACTION_LABEL_V2_TEMPLATE = """\
+You are analyzing {{ num_frames }} frames sampled from a {{ duration }}-second video segment \
+({{ start_time }}s–{{ end_time }}s).
+
+Consider ALL {{ num_frames }} frames together as a sequence. Do NOT label based on the \
+most distinctive single frame — identify the dominant action across the entire segment.
+
+{% if allowed_actions -%}
+You MUST choose primary_action from this list:
+{{ allowed_actions }}
+If none fit exactly, pick the closest match.
+
+{% endif -%}
+primary_action rules:
+- Concise verb phrase, maximum 3 words, lowercase, no articles.
+- Use the most GENERAL verb that is still accurate.
+  Prefer "fighting" over "sword fighting" or "fighting with spear".
+  Prefer "walking" over "walking through snow" or "walking forward".
+  Prefer "falling" over "collapsing to ground" or "falling onto floor".
+- If the segment contains a scene transition or multiple actions, label the \
+action that occupies the MOST frames.
+- Do NOT include location, weapon, or manner qualifiers — those go in description.
+
+Examples:
+  "fighting"  — NOT "fighting in snow" or "fighting with spear"
+  "walking"   — NOT "walking through snow" or "running across snow"
+  "falling"   — NOT "collapsing to ground" or "dying from wound"
+  "retrieving object" — NOT "retrieving staff from snow"
+
+secondary_actions: other actions visible, same rules.
+objects: nouns only.
+
+Respond with ONLY a JSON object:
+{
+  "primary_action": "verb [object]",
+  "secondary_actions": ["other actions if any"],
+  "description": "detailed description of what is happening across all frames",
+  "objects": ["notable objects visible"],
+  "environment_context": "brief setting description",
+  "confidence": 0.85,
+  "reasoning_summary_or_notes": "brief reasoning",
+  "uncertainty_flags": ["uncertain aspects if any"]
+}
+"""
+
 CLAUDE_ACTION_LABEL_TEMPLATE = """\
 You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment \
 ({{ start_time }}s–{{ end_time }}s).
@@ -154,6 +199,7 @@ BUILTIN_TEMPLATES = {
     "concise": CONCISE_LABEL_TEMPLATE,
     "rich": RICH_LABEL_TEMPLATE,
     "action_label": ACTION_LABEL_TEMPLATE,
+    "action_label_v2": ACTION_LABEL_V2_TEMPLATE,
     "claude_action_label": CLAUDE_ACTION_LABEL_TEMPLATE,
     "strict_json": STRICT_JSON_TEMPLATE,
 }

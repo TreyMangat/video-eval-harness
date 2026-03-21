@@ -299,6 +299,7 @@ def run_benchmark(
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
     adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
+    action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -310,6 +311,7 @@ def run_benchmark(
     Use --model-filter to run only a subset of models from the config.
     Use --ground-truth to evaluate against known labels.
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
+    Use --action-vocabulary to constrain labels to a fixed taxonomy.
     """
     _setup(log_level)
     from .caching import ResponseCache as _RC
@@ -360,16 +362,21 @@ def run_benchmark(
             if gt_labels:
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
 
+    # Load action vocabulary if provided
+    vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
+
     # Branch: sweep mode vs single-config mode
     if sweep and sweep_cfg is not None:
         _run_sweep(
             sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             dry_run, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
+            vocab_context,
         )
     else:
         _run_single(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             num_frames, artifacts_dir, log_level, filter_models, gt_labels, ego4d_adapter,
+            vocab_context,
         )
 
     cache.close()
@@ -441,6 +448,25 @@ def _make_ego4d_adapter(manifest: Optional[str], path: str) -> "Ego4DAdapter":
         console.print("[red]--adapter ego4d requires --manifest path/to/ego4d.json[/red]")
         raise typer.Exit(1)
     return Ego4DAdapter(manifest_path=manifest, video_dir=path)
+
+
+def _load_action_vocabulary(vocab_path: str) -> dict:
+    """Load an action vocabulary file and return extra_context for templates."""
+    p = Path(vocab_path)
+    if not p.exists():
+        console.print(f"[red]Action vocabulary file not found: {vocab_path}[/red]")
+        raise typer.Exit(1)
+
+    actions = [
+        line.strip() for line in p.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not actions:
+        console.print("[red]Action vocabulary file is empty[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"Loaded [cyan]{len(actions)}[/cyan] allowed actions from {vocab_path}")
+    return {"allowed_actions": "\n".join(f"  - {a}" for a in actions)}
 
 
 def _load_ground_truth(gt_path: str) -> list:
@@ -517,6 +543,7 @@ def _run_single(
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
     ego4d_adapter: Optional[object] = None,
+    extra_context: Optional[dict] = None,
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -627,6 +654,7 @@ def _run_single(
         cache=cache,
         prompt_version=effective_prompt,
         max_concurrency=settings.vbench_max_concurrency,
+        extra_context=extra_context,
     )
 
     results = runner.run(run_id, all_segments, frames_map, model_names)
@@ -661,6 +689,7 @@ def _run_sweep(
     filter_models: Optional[list[str]] = None,
     gt_labels: Optional[list] = None,
     ego4d_adapter: Optional[object] = None,
+    extra_context: Optional[dict] = None,
 ) -> None:
     """Sweep-mode benchmark run: iterate extraction variants x models."""
     from .config import setup_providers, validate_run_config
@@ -764,6 +793,7 @@ def _run_sweep(
         cache=cache,
         prompt_version=effective_prompt,
         max_concurrency=settings.vbench_max_concurrency,
+        extra_context=extra_context,
     )
 
     results = runner.run_sweep(run_id, all_segments, video_paths, sweep_cfg, model_names)
@@ -877,6 +907,7 @@ def sweep(
     ground_truth: Optional[str] = typer.Option(None, "--ground-truth", help="Path to ground truth JSON file"),
     adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d)"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for dataset adapters"),
+    action_vocabulary: Optional[str] = typer.Option(None, "--action-vocabulary", help="Path to text file with allowed actions (one per line)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -885,6 +916,7 @@ def sweep(
     Equivalent to 'run-benchmark --sweep --frames 4,8,16 --methods uniform,keyframe'.
     Use --model-filter to run only a subset of models.
     Use --adapter ego4d --manifest path/to/ego4d.json for Ego4D datasets.
+    Use --action-vocabulary to constrain labels to a fixed taxonomy.
     """
     _setup(log_level)
     from .caching import ResponseCache
@@ -913,9 +945,12 @@ def sweep(
             if gt_labels:
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from Ego4D manifest")
 
+    vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
+
     _run_sweep(
         sweep_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
         dry_run, artifacts_dir, log_level, filter_list, gt_labels, ego4d_adapter,
+        vocab_context,
     )
 
     cache.close()

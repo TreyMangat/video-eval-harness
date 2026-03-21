@@ -35,6 +35,7 @@ class LabelingRunner:
         cache: ResponseCache,
         prompt_version: str = "concise",
         max_concurrency: int = 4,
+        extra_context: Optional[dict] = None,
     ):
         self.providers = providers
         self.models = models
@@ -43,6 +44,7 @@ class LabelingRunner:
         self.cache = cache
         self.prompt_version = prompt_version
         self.max_concurrency = max_concurrency
+        self.extra_context = extra_context or {}
 
     def run(
         self,
@@ -254,6 +256,7 @@ class LabelingRunner:
             self.prompt_version,
             segment,
             num_frames=num_frames,
+            extra_context=self.extra_context if self.extra_context else None,
         )
 
         # Check cache (variant_id included for sweep runs)
