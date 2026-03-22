@@ -263,9 +263,12 @@ def export_results(
 
     if "parquet" in formats:
         parquet_path = output_dir / f"{run_id}_results.parquet"
-        df.to_parquet(parquet_path, index=False)
-        exported.append(parquet_path)
-        logger.info(f"Exported Parquet: {parquet_path}")
+        try:
+            df.to_parquet(parquet_path, index=False)
+            exported.append(parquet_path)
+            logger.info(f"Exported Parquet: {parquet_path}")
+        except ImportError:
+            logger.warning("Skipping parquet export (pyarrow not installed)")
 
     if "json" in formats:
         json_path = output_dir / f"{run_id}_results.json"
