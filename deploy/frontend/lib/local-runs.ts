@@ -2,7 +2,9 @@ import { promises as fs } from "fs";
 import path from "path";
 
 import type {
+  AccuracyMetric,
   FramePreview,
+  GroundTruthEntry,
   LabelResult,
   ModelSummary,
   RunListItem,
@@ -17,6 +19,9 @@ type JsonRunBundle = {
   results: LabelResult[];
   summary_overrides: Record<string, Partial<ModelSummary>>;
   agreement: Record<string, Record<string, number>> | null;
+  accuracy_by_model: Record<string, AccuracyMetric> | null;
+  llm_accuracy: Record<string, AccuracyMetric> | null;
+  ground_truth: GroundTruthEntry[] | null;
 };
 const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
 const RUN_METADATA_FILENAME = "run_metadata.json";
@@ -340,6 +345,34 @@ function coerceAgreementMatrix(
   return Object.keys(matrix).length > 0 ? matrix : null;
 }
 
+function coerceAccuracyMetrics(raw: unknown): Record<string, AccuracyMetric> | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const normalized = Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>)
+      .filter(([, value]) => value && typeof value === "object")
+      .map(([modelName, value]) => [
+        modelName,
+        value as AccuracyMetric,
+      ])
+  );
+
+  return Object.keys(normalized).length > 0
+    ? (normalized as Record<string, AccuracyMetric>)
+    : null;
+}
+
+function coerceGroundTruth(raw: unknown): GroundTruthEntry[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+
+  const entries = raw.filter((entry): entry is GroundTruthEntry => Boolean(entry && typeof entry === "object"));
+  return entries.length > 0 ? entries : null;
+}
+
 async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRunBundle | null> {
   const artifactPath = await findRunArtifact(runId, "json", dataDir);
   if (!artifactPath) {
@@ -352,6 +385,9 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
       results: raw.map((record) => parseLabelResultRecord(record as Record<string, unknown>)),
       summary_overrides: {},
       agreement: null,
+      accuracy_by_model: null,
+      llm_accuracy: null,
+      ground_truth: null,
     };
   }
   if (!raw || typeof raw !== "object") {
@@ -367,6 +403,9 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
     results,
     summary_overrides: parseSummaryOverrides(record),
     agreement: coerceAgreementMatrix(record.agreement),
+    accuracy_by_model: coerceAccuracyMetrics(record.accuracy_by_model),
+    llm_accuracy: coerceAccuracyMetrics(record.llm_accuracy),
+    ground_truth: coerceGroundTruth(record.ground_truth),
   };
 }
 
@@ -392,7 +431,29 @@ async function loadRunResults(
     results: await loadCsvResults(runId, dataDir),
     summary_overrides: {},
     agreement: null,
+    accuracy_by_model: null,
+    llm_accuracy: null,
+    ground_truth: null,
   };
+}
+
+async function loadGroundTruth(
+  runId: string,
+  dataDir?: string
+): Promise<GroundTruthEntry[] | null> {
+  const runsDir = await resolveRunsDir(dataDir);
+  const groundTruthPath = path.join(runsDir, runId, "ground_truth.json");
+  if (!(await exists(groundTruthPath))) {
+    return null;
+  }
+
+  try {
+    const raw = JSON.parse(await fs.readFile(groundTruthPath, "utf-8")) as unknown;
+    return coerceGroundTruth(raw);
+  } catch (error) {
+    console.error(`Failed to load ground truth for ${runId}:`, error);
+    return null;
+  }
 }
 
 async function loadSweepSummary(
@@ -573,6 +634,7 @@ export async function loadArtifactRun(
 
   const sweepSummary = await loadSweepSummary(runId, dataDir);
   const runType = await loadRunType(runId, dataDir);
+  const groundTruth = runData.ground_truth ?? (await loadGroundTruth(runId, dataDir));
   const payload = buildRunPayload(
     runId,
     runData.results,
@@ -584,6 +646,9 @@ export async function loadArtifactRun(
     ...payload,
     run_type: runType,
     agreement: runData.agreement ?? payload.agreement,
+    accuracy_by_model: runData.accuracy_by_model,
+    llm_accuracy: runData.llm_accuracy,
+    ground_truth: groundTruth,
   };
 }
 

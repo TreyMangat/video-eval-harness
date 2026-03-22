@@ -17,6 +17,27 @@ export type ModelSummary = {
   input_mode?: string | null;
 };
 
+export type AccuracyMetric = {
+  accuracy?: number | null;
+  exact_match_rate?: number | null;
+  fuzzy_match_rate?: number | null;
+  llm_accuracy?: number | null;
+  mean_similarity?: number | null;
+  evaluated_segments?: number | null;
+};
+
+export type GroundTruthEntry = {
+  video_id?: string;
+  segment_id?: string;
+  segment_index?: number;
+  start_time_s?: number;
+  end_time_s?: number;
+  primary_action?: string | null;
+  label?: string | null;
+  description?: string | null;
+  source?: string | null;
+};
+
 export type LabelResult = {
   run_id: string;
   video_id: string;
@@ -72,6 +93,8 @@ export type RunPayload = {
     model_configs?: Record<string, { role?: string; notes?: string }>;
     video_ids: string[];
     created_at: string;
+    display_name?: string | null;
+    notes?: string | null;
   };
   models: string[];
   videos: Array<{
@@ -88,8 +111,13 @@ export type RunPayload = {
   }>;
   summaries: Record<string, ModelSummary>;
   agreement: Record<string, Record<string, number>>;
+  llm_agreement?: Record<string, Record<string, number>> | null;
+  llm_accuracy?: Record<string, AccuracyMetric> | null;
+  judge_stats?: Record<string, unknown> | null;
+  accuracy_by_model?: Record<string, AccuracyMetric> | null;
   segments: SegmentSummary[];
   results: LabelResult[];
+  ground_truth?: GroundTruthEntry[] | null;
   sweep?: SweepMetrics;
 };
 

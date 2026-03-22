@@ -1658,6 +1658,25 @@ def _normalize_export_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
+def _load_ground_truth_payload(run_dir: Optional[Path]) -> Optional[list[dict[str, Any]]]:
+    if run_dir is None:
+        return None
+
+    ground_truth_path = run_dir / "ground_truth.json"
+    if not ground_truth_path.exists():
+        return None
+
+    try:
+        payload = json.loads(ground_truth_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    if not isinstance(payload, list):
+        return None
+
+    return [entry for entry in payload if isinstance(entry, dict)]
+
+
 def _normalize_export_payload(
     payload: dict[str, Any],
     run_id: str,
@@ -1727,6 +1746,11 @@ def _normalize_export_payload(
         "agreement": payload.get("agreement") if isinstance(payload.get("agreement"), dict) else {},
         "segments": segments,
         "results": payload.get("results") if isinstance(payload.get("results"), list) else [],
+        "ground_truth": (
+            [entry for entry in payload.get("ground_truth", []) if isinstance(entry, dict)]
+            if isinstance(payload.get("ground_truth"), list)
+            else _load_ground_truth_payload(run_dir)
+        ),
     }
 
     if isinstance(payload.get("sweep"), dict):
@@ -1903,6 +1927,7 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
         "accuracy_by_model": accuracy_by_model,
         "segments": segment_items,
         "results": [result.model_dump() for result in results],
+        "ground_truth": _load_ground_truth_payload(run_dir),
     }
 
 

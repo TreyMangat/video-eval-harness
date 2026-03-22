@@ -2388,6 +2388,146 @@ textarea:focus {
   margin-bottom: 32px;
 }
 
+.accuracy-report-section {
+  margin-bottom: 32px;
+}
+
+.accuracy-model-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.accuracy-model-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.accuracy-model-card .model-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.accuracy-model-card .accuracy-score {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.accuracy-score.is-high {
+  color: #86efac;
+}
+
+.accuracy-score.is-mid {
+  color: #fcd34d;
+}
+
+.accuracy-score.is-low {
+  color: #fca5a5;
+}
+
+.accuracy-score.is-none {
+  color: var(--muted);
+}
+
+.accuracy-model-card .accuracy-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.segment-accuracy-table h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.accuracy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 12px;
+}
+
+.accuracy-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.accuracy-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  color: #f8fafc;
+  vertical-align: top;
+}
+
+.seg-time {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.gt-label {
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.model-answer {
+  position: relative;
+}
+
+.model-answer.correct {
+  color: #86efac;
+}
+
+.model-answer.incorrect {
+  color: #f8fafc;
+}
+
+.match-indicator {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.match-indicator.match {
+  color: #86efac;
+}
+
+.match-indicator.mismatch {
+  color: #fca5a5;
+}
+
+.accuracy-pending {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.accuracy-pending p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .full-details-card {
   margin-top: 32px;
 }
