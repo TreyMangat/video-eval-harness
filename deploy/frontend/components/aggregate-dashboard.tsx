@@ -3,8 +3,8 @@ import Link from "next/link";
 import {
   buildCoreComparisonRows,
   displayRunName,
-  displayVideoName,
   formatDateTime,
+  formatLatency,
   formatMoney,
   formatPercent,
   getSweepData,
@@ -36,6 +36,13 @@ export interface AggregateModelRow {
 
 export type AggregateAgreementMatrix = Record<string, Record<string, number | null>>;
 
+type AggregateAgreementVerdict = {
+  strongestPair: string;
+  strongestPairScore: number;
+  weakestPair: string;
+  weakestPairScore: number;
+};
+
 function average(values: number[]): number | null {
   if (values.length === 0) {
     return null;
@@ -57,19 +64,6 @@ function buildHref(
   return suffix ? `${pathname}?${suffix}` : pathname;
 }
 
-function summarizeModelNames(models: string[]): string {
-  if (models.length === 0) {
-    return "No models loaded";
-  }
-  if (models.length === 1) {
-    return models[0];
-  }
-  if (models.length === 2) {
-    return `${models[0]}, ${models[1]}`;
-  }
-  return `${models[0]}, ${models[1]} +${models.length - 2} more`;
-}
-
 function preferredAccuracy(row: AggregateModelRow): number | null {
   return row.avg_llm_accuracy ?? row.avg_accuracy;
 }
@@ -83,13 +77,13 @@ export function signalIndicator(row: AggregateModelRow): { label: string; classN
   const delta = row.avg_agreement - accuracy;
   if (delta >= 0.1) {
     return {
-      label: `⚠ overconfident +${Math.round(delta * 100)} pts`,
+      label: `Warning: overconfident +${Math.round(delta * 100)} pts`,
       className: "aggregate-signal-badge warning",
     };
   }
   if (delta <= -0.1) {
     return {
-      label: `✓ underrated +${Math.round(Math.abs(delta) * 100)} pts`,
+      label: `Underrated +${Math.round(Math.abs(delta) * 100)} pts`,
       className: "aggregate-signal-badge positive",
     };
   }
@@ -104,7 +98,7 @@ function resolveAggregateInputMode(modes: Set<string>): string {
 }
 
 export function inputModeLabel(mode: string): string {
-  return mode === "video" ? "🎬 Video" : "🖼️ Frames";
+  return mode === "video" ? "Video" : "Frames";
 }
 
 export function inputModeClass(mode: string): string {
@@ -214,6 +208,50 @@ function bestAgreementRow(rows: AggregateModelRow[]): AggregateModelRow | null {
       const rightAccuracy = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
       if (leftAccuracy !== rightAccuracy) {
         return rightAccuracy - leftAccuracy;
+      }
+
+      return left.model_name.localeCompare(right.model_name);
+    })[0] ?? null;
+}
+
+function bestLatencyRow(rows: AggregateModelRow[]): AggregateModelRow | null {
+  return [...rows]
+    .filter((row) => row.avg_latency_ms != null)
+    .sort((left, right) => {
+      const leftLatency = left.avg_latency_ms ?? Number.POSITIVE_INFINITY;
+      const rightLatency = right.avg_latency_ms ?? Number.POSITIVE_INFINITY;
+      if (leftLatency !== rightLatency) {
+        return leftLatency - rightLatency;
+      }
+
+      const leftAccuracy = preferredAccuracy(left) ?? Number.NEGATIVE_INFINITY;
+      const rightAccuracy = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
+      if (leftAccuracy !== rightAccuracy) {
+        return rightAccuracy - leftAccuracy;
+      }
+
+      return left.model_name.localeCompare(right.model_name);
+    })[0] ?? null;
+}
+
+function bestValueRow(rows: AggregateModelRow[]): AggregateModelRow | null {
+  return [...rows]
+    .filter((row) => preferredAccuracy(row) != null && row.total_cost > 0)
+    .sort((left, right) => {
+      const leftRatio = (preferredAccuracy(left) ?? 0) / left.total_cost;
+      const rightRatio = (preferredAccuracy(right) ?? 0) / right.total_cost;
+      if (leftRatio !== rightRatio) {
+        return rightRatio - leftRatio;
+      }
+
+      const leftAccuracy = preferredAccuracy(left) ?? Number.NEGATIVE_INFINITY;
+      const rightAccuracy = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
+      if (leftAccuracy !== rightAccuracy) {
+        return rightAccuracy - leftAccuracy;
+      }
+
+      if (left.total_cost !== right.total_cost) {
+        return left.total_cost - right.total_cost;
       }
 
       return left.model_name.localeCompare(right.model_name);
@@ -348,12 +386,57 @@ export function computeAggregateAgreementMatrix(
       }
       const key = `${rowModel}::${columnModel}`;
       const count = pairCounts.get(key) ?? 0;
-      matrix[rowModel][columnModel] =
-        count > 0 ? (pairSums.get(key) ?? 0) / count : null;
+      matrix[rowModel][columnModel] = count > 0 ? (pairSums.get(key) ?? 0) / count : null;
     }
   }
 
   return matrix;
+}
+
+function countAccuracyRuns(runs: RunPayload[]): number {
+  return runs.filter((run) =>
+    buildCoreComparisonRows(run, getSweepData(run)).some(
+      (row) => row.llm_accuracy != null || row.accuracy != null
+    )
+  ).length;
+}
+
+function computeAgreementVerdict(
+  matrix: AggregateAgreementMatrix
+): AggregateAgreementVerdict | null {
+  const models = Object.keys(matrix).sort();
+  let strongest: { pair: string; score: number } | null = null;
+  let weakest: { pair: string; score: number } | null = null;
+
+  for (let rowIndex = 0; rowIndex < models.length; rowIndex += 1) {
+    const rowModel = models[rowIndex];
+    for (let columnIndex = rowIndex + 1; columnIndex < models.length; columnIndex += 1) {
+      const columnModel = models[columnIndex];
+      const score = matrix[rowModel]?.[columnModel] ?? matrix[columnModel]?.[rowModel] ?? null;
+      if (score == null) {
+        continue;
+      }
+
+      const pair = `${rowModel} + ${columnModel}`;
+      if (!strongest || score > strongest.score) {
+        strongest = { pair, score };
+      }
+      if (!weakest || score < weakest.score) {
+        weakest = { pair, score };
+      }
+    }
+  }
+
+  if (!strongest || !weakest) {
+    return null;
+  }
+
+  return {
+    strongestPair: strongest.pair,
+    strongestPairScore: strongest.score,
+    weakestPair: weakest.pair,
+    weakestPairScore: weakest.score,
+  };
 }
 
 function indexedVideoCount(runList: RunListItem[]): number {
@@ -377,32 +460,12 @@ export function medalClass(index: number): string {
   return "";
 }
 
-function AggregateStatCard({
-  label,
-  value,
-  secondary,
-  accentColor,
-}: {
-  label: string;
-  value: string;
-  secondary: string;
-  accentColor: string;
-}) {
-  return (
-    <article className="hero-card" style={{ borderTopColor: accentColor }}>
-      <p className="hero-card-label">{label}</p>
-      <p className="hero-card-number" style={{ color: accentColor }}>
-        {value}
-      </p>
-      <p className="hero-card-secondary">{secondary}</p>
-    </article>
-  );
-}
-
 function AggregateAgreementMatrixCard({
   matrix,
+  verdict,
 }: {
   matrix: AggregateAgreementMatrix;
+  verdict: AggregateAgreementVerdict | null;
 }) {
   const models = Object.keys(matrix).filter((modelName) =>
     Object.entries(matrix[modelName] ?? {}).some(
@@ -457,6 +520,14 @@ function AggregateAgreementMatrixCard({
           </tbody>
         </table>
       </div>
+
+      {verdict ? (
+        <p className="heatmap-verdict">
+          Strongest pair: <strong>{verdict.strongestPair}</strong> (
+          {formatPercent(verdict.strongestPairScore)}). Weakest pair:{" "}
+          <strong>{verdict.weakestPair}</strong> ({formatPercent(verdict.weakestPairScore)}).
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -477,13 +548,18 @@ export function AggregateDashboard({
   nextLoadCount?: number | null;
 }) {
   const recentRuns = runList.slice(0, 10);
+  const runPayloadById = new Map(runs.map((run) => [run.run_id, run]));
   const aggregateStats = computeAggregateStats(runs);
   const leaderboard = computeAggregateLeaderboard(runs);
   const bestAccuracy = bestAccuracyRow(leaderboard);
   const bestAgreement = bestAgreementRow(leaderboard);
+  const fastestModel = bestLatencyRow(leaderboard);
+  const bestValue = bestValueRow(leaderboard);
   const hasExactAccuracy = leaderboard.some((row) => row.avg_accuracy != null);
   const hasLlmAccuracy = leaderboard.some((row) => row.avg_llm_accuracy != null);
   const aggregateAgreementMatrix = computeAggregateAgreementMatrix(runs);
+  const agreementVerdict = computeAgreementVerdict(aggregateAgreementMatrix);
+  const accuracyRunCount = countAccuracyRuns(runs);
   const totalRuns = runList.length;
   const totalVideos = indexedVideoCount(runList);
   const allModels = indexedModels(runList);
@@ -506,14 +582,6 @@ export function AggregateDashboard({
               exports to browse benchmark history.
             </p>
           </div>
-          <div className="aggregate-hero-actions">
-            <Link href={buildHref("/new", { dataDir })} className="ghost-btn small aggregate-action-btn">
-              New Benchmark
-            </Link>
-            <Link href={buildHref("/runs", { dataDir })} className="ghost-btn small aggregate-action-btn">
-              Browse Runs
-            </Link>
-          </div>
         </section>
       </main>
     );
@@ -535,80 +603,76 @@ export function AggregateDashboard({
               </p>
             </div>
             <p className="aggregate-hero-note">
-              {allRunsLoaded
-                ? `All ${loadedRunCount} available runs are loaded into the aggregate leaderboard.`
-                : `Showing aggregate metrics from ${loadedRunCount} loaded runs out of ${totalRuns}. Load more history to pull older runs into the charts and leaderboard.`}
+              {allRunsLoaded ? (
+                `All ${loadedRunCount} available runs are loaded into the aggregate leaderboard.`
+              ) : (
+                <>
+                  Showing aggregate metrics from {loadedRunCount} loaded runs out of {totalRuns}.{" "}
+                  {loadMoreHref ? (
+                    <Link href={loadMoreHref} className="aggregate-inline-link">
+                      Load more history →
+                    </Link>
+                  ) : null}
+                </>
+              )}
             </p>
           </div>
+        </section>
 
-          <div className="aggregate-hero-actions">
-            <Link href={buildHref("/new", { dataDir })} className="ghost-btn small aggregate-action-btn">
-              New Benchmark
-            </Link>
-            <Link href={buildHref("/runs", { dataDir })} className="ghost-btn small aggregate-action-btn">
-              Browse All Runs
-            </Link>
-            {loadMoreHref ? (
-              <Link href={loadMoreHref} className="ghost-btn small aggregate-action-btn">
-                Load More History
-              </Link>
-            ) : null}
+        <section className="winner-cards">
+          <div className="winner-card winner-accuracy">
+            <span className="winner-label">Most accurate</span>
+            <span className="winner-model">{bestAccuracy?.model_name ?? "—"}</span>
+            <span className="winner-value">
+              {bestAccuracy ? formatPercent(preferredAccuracy(bestAccuracy)) : "—"}
+            </span>
+            <span className="winner-sub">
+              {bestAccuracy
+                ? `LLM-judged accuracy across ${accuracyRunCount} runs`
+                : "Run with --ground-truth to enable"}
+            </span>
+          </div>
+          <div className="winner-card winner-agreement">
+            <span className="winner-label">Best consensus</span>
+            <span className="winner-model">{bestAgreement?.model_name ?? "—"}</span>
+            <span className="winner-value">
+              {bestAgreement ? formatPercent(bestAgreement.avg_agreement) : "—"}
+            </span>
+            <span className="winner-sub">Average cross-model agreement</span>
+          </div>
+          <div className="winner-card winner-speed">
+            <span className="winner-label">Fastest</span>
+            <span className="winner-model">{fastestModel?.model_name ?? "—"}</span>
+            <span className="winner-value">
+              {fastestModel ? formatLatency(fastestModel.avg_latency_ms) : "—"}
+            </span>
+            <span className="winner-sub">Average response latency</span>
+          </div>
+          <div className="winner-card winner-value">
+            <span className="winner-label">Best value</span>
+            <span className="winner-model">{bestValue?.model_name ?? "—"}</span>
+            <span className="winner-value">
+              {bestValue
+                ? `${formatPercent(preferredAccuracy(bestValue))} at ${formatMoney(bestValue.total_cost)}`
+                : "—"}
+            </span>
+            <span className="winner-sub">
+              {bestValue ? "Highest accuracy per dollar" : "Run with --ground-truth to enable"}
+            </span>
           </div>
         </section>
 
-        {bestAccuracy && bestAgreement ? (
-          <section className="findings-callout">
-            <div className="findings-icon">⚡</div>
-            <div className="findings-content">
-              <h2>Key finding: agreement ≠ accuracy</h2>
-              <p>
-                Models that agree with each other aren&apos;t necessarily correct. On labeled
-                video data, <strong>{bestAccuracy.model_name}</strong> leads accuracy at{" "}
-                <strong>{formatPercent(preferredAccuracy(bestAccuracy))}</strong>, while{" "}
-                <strong>{bestAgreement.model_name}</strong> leads agreement at{" "}
-                <strong>{formatPercent(bestAgreement.avg_agreement)}</strong>.
-                {bestAccuracy.model_name !== bestAgreement.model_name
-                  ? " These are different models."
-                  : ""}
-              </p>
-            </div>
-          </section>
-        ) : null}
-
-        <section className="aggregate-stats-grid">
-          <AggregateStatCard
-            label="Total Runs Completed"
-            value={String(totalRuns)}
-            secondary="Merged static exports and live backend runs"
-            accentColor="#4c9aff"
-          />
-          <AggregateStatCard
-            label="Videos Analyzed"
-            value={String(totalVideos)}
-            secondary="Deduplicated across the indexed benchmark history"
-            accentColor="#38bdf8"
-          />
-          <AggregateStatCard
-            label={allRunsLoaded ? "Total API Cost" : "Loaded API Cost"}
-            value={formatMoney(aggregateStats.total_cost)}
-            secondary={
-              allRunsLoaded
-                ? "Summed across every loaded run payload"
-                : `${loadedRunCount} loaded runs contributing to current charts`
-            }
-            accentColor="#f59e0b"
-          />
-          <AggregateStatCard
-            label="Models Tested"
-            value={String(allModels.length)}
-            secondary={summarizeModelNames(allModels)}
-            accentColor="#22c55e"
-          />
-        </section>
+        <p className="meta-line">
+          {totalRuns} runs · {totalVideos} videos · ${aggregateStats.total_cost.toFixed(2)} API
+          cost · {allModels.length} models tested
+        </p>
 
         <AggregateVisualsClient rows={leaderboard} />
 
-        <AggregateAgreementMatrixCard matrix={aggregateAgreementMatrix} />
+        <AggregateAgreementMatrixCard
+          matrix={aggregateAgreementMatrix}
+          verdict={agreementVerdict}
+        />
 
         <section className="visual-card dashboard-section-card">
           <div className="section-heading">
@@ -637,52 +701,55 @@ export function AggregateDashboard({
             <p className="section-eyebrow">Recent Runs</p>
             <h3>Jump from the overview into a specific benchmark report.</h3>
             <p className="chart-desc">
-              Each card links straight into the per-run report page, with model chips and recent
-              video context kept visible at a glance.
+              Each card links straight into the per-run report page, with model chips and benchmark
+              scope kept visible at a glance.
             </p>
           </div>
 
           <div className="recent-runs-grid">
-            {recentRuns.map((run) => (
-              <article key={run.run_id} className="visual-card recent-run-card">
-                <div className="recent-run-card-head">
-                  <div className="run-list-cell">
-                    <p className="run-list-name">{displayRunName(run.run_id, run.created_at)}</p>
-                    <p className="run-list-raw">{run.run_id}</p>
+            {recentRuns.map((run) => {
+              const runPayload = runPayloadById.get(run.run_id);
+              const segmentCount = runPayload?.segments.length;
+
+              return (
+                <article key={run.run_id} className="visual-card recent-run-card">
+                  <div className="recent-run-card-head">
+                    <div className="run-list-cell">
+                      <p className="run-list-name">{displayRunName(run.run_id, run.created_at)}</p>
+                      <p className="run-list-raw">{run.run_id}</p>
+                    </div>
+                    <p className="recent-run-card-date">{formatDateTime(run.created_at)}</p>
                   </div>
-                  <p className="recent-run-card-date">{formatDateTime(run.created_at)}</p>
-                </div>
 
-                <div className="aggregate-tag-list">
-                  {run.models.map((modelName) => (
-                    <span
-                      key={`${run.run_id}-${modelName}`}
-                      className="model-tag"
-                      style={{
-                        background: `${modelColor(modelName)}22`,
-                        color: modelColor(modelName),
-                        borderColor: `${modelColor(modelName)}55`,
-                      }}
-                    >
-                      {modelName}
-                    </span>
-                  ))}
-                </div>
+                  <div className="aggregate-tag-list">
+                    {run.models.map((modelName) => (
+                      <span
+                        key={`${run.run_id}-${modelName}`}
+                        className="model-tag"
+                        style={{
+                          background: `${modelColor(modelName)}22`,
+                          color: modelColor(modelName),
+                          borderColor: `${modelColor(modelName)}55`,
+                        }}
+                      >
+                        {modelName}
+                      </span>
+                    ))}
+                  </div>
 
-                <p className="recent-run-card-videos">
-                  {run.video_ids.length === 0
-                    ? "No video metadata available"
-                    : run.video_ids.map((videoId) => displayVideoName(videoId)).join(", ")}
-                </p>
+                  <p className="recent-run-card-summary">
+                    {run.video_ids.length} videos · {segmentCount ?? "—"} segments
+                  </p>
 
-                <Link
-                  href={buildHref(`/report/${run.run_id}`, { dataDir })}
-                  className="recent-run-card-link"
-                >
-                  Open Report →
-                </Link>
-              </article>
-            ))}
+                  <Link
+                    href={buildHref(`/report/${run.run_id}`, { dataDir })}
+                    className="recent-run-card-link"
+                  >
+                    Open Report →
+                  </Link>
+                </article>
+              );
+            })}
           </div>
         </section>
       </div>

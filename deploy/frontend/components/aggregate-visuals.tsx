@@ -6,24 +6,18 @@ import {
   CartesianGrid,
   Cell,
   LabelList,
-  ReferenceLine,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-import { formatLatency, formatMoney, formatPercent, modelColor } from "../lib/analysis";
+import { formatLatency, formatPercent } from "../lib/analysis";
 import type { AggregateModelRow } from "./aggregate-dashboard";
 
 type ChartDatum = AggregateModelRow & {
   agreement_pct: number | null;
-  exact_accuracy_pct: number | null;
-  llm_accuracy_pct: number | null;
   primary_accuracy_pct: number | null;
-  fill: string;
 };
 
 function tooltipStyle() {
@@ -99,22 +93,6 @@ function SectionHeader({
   );
 }
 
-function ScatterPoint(props: { cx?: number; cy?: number; fill?: string }) {
-  if (props.cx == null || props.cy == null) {
-    return null;
-  }
-  return (
-    <circle
-      cx={props.cx}
-      cy={props.cy}
-      r={8}
-      fill={props.fill ?? "#38bdf8"}
-      stroke="rgba(10, 10, 15, 0.95)"
-      strokeWidth={2}
-    />
-  );
-}
-
 function primaryAccuracy(row: AggregateModelRow): number | null {
   return row.avg_llm_accuracy ?? row.avg_accuracy;
 }
@@ -123,23 +101,8 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
   const chartRows: ChartDatum[] = rows.map((row) => ({
     ...row,
     agreement_pct: row.avg_agreement == null ? null : row.avg_agreement * 100,
-    exact_accuracy_pct: row.avg_accuracy == null ? null : row.avg_accuracy * 100,
-    llm_accuracy_pct: row.avg_llm_accuracy == null ? null : row.avg_llm_accuracy * 100,
     primary_accuracy_pct: primaryAccuracy(row) == null ? null : primaryAccuracy(row)! * 100,
-    fill: modelColor(row.model_name),
   }));
-
-  const accuracyAgreementScatterData = [...chartRows]
-    .filter(
-      (row): row is ChartDatum & { agreement_pct: number; primary_accuracy_pct: number } =>
-        row.agreement_pct != null && row.primary_accuracy_pct != null
-    )
-    .sort(
-      (left, right) =>
-        right.primary_accuracy_pct - left.primary_accuracy_pct ||
-        right.agreement_pct - left.agreement_pct ||
-        left.model_name.localeCompare(right.model_name)
-    );
 
   const accuracyRankingData = [...chartRows]
     .filter(
@@ -170,132 +133,18 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
         left.model_name.localeCompare(right.model_name)
     );
 
-  const costScatterData = [...chartRows]
-    .filter(
-      (row): row is ChartDatum & { primary_accuracy_pct: number } =>
-        row.primary_accuracy_pct != null && row.total_cost > 0
-    )
-    .sort(
-      (left, right) =>
-        right.primary_accuracy_pct - left.primary_accuracy_pct ||
-        left.total_cost - right.total_cost ||
-        left.model_name.localeCompare(right.model_name)
-    );
-
   const latencyDomain = domainWithPadding(
     latencyData
       .map((row) => row.avg_latency_ms)
       .filter((value): value is number => value != null),
     100
   );
-  const costScatterXDomain = domainWithPadding(
-    costScatterData.map((row) => row.total_cost),
-    0.01
-  );
-  const costScatterYDomain = domainWithPadding(
-    costScatterData.map((row) => row.primary_accuracy_pct),
-    4
-  );
-
   const averageAgreement = average(
     rows.map((row) => row.avg_agreement).filter((value): value is number => value != null)
-  );
-  const averageAccuracyGap = average(
-    accuracyAgreementScatterData.map((row) =>
-      Math.abs(row.primary_accuracy_pct - row.agreement_pct)
-    )
   );
 
   return (
     <div className="aggregate-visual-stack">
-      <section className="visual-card dashboard-section-card">
-        <SectionHeader
-          eyebrow="Transparency"
-          title="AGREEMENT VS ACCURACY"
-          description="Models above the diagonal are quietly correct. Models below are confidently wrong."
-        />
-
-        {accuracyAgreementScatterData.length === 0 ? (
-          <p className="empty-state">
-            No accuracy data is available in the loaded runs yet. Add a ground-truth or judge-scored
-            run to compare consensus against correctness.
-          </p>
-        ) : (
-          <div className="chart-stage-large">
-            <ResponsiveContainer width="100%" height={360}>
-              <ScatterChart margin={{ top: 16, right: 32, left: 16, bottom: 24 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-                <XAxis
-                  type="number"
-                  dataKey="agreement_pct"
-                  domain={[0, 100]}
-                  tick={{ fill: "#94a3b8", fontSize: 12 }}
-                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
-                  axisLine={false}
-                  tickLine={false}
-                  label={{
-                    value: "Average agreement",
-                    position: "insideBottom",
-                    offset: -10,
-                    fill: "#94a3b8",
-                  }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="primary_accuracy_pct"
-                  domain={[0, 100]}
-                  tick={{ fill: "#94a3b8", fontSize: 12 }}
-                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
-                  axisLine={false}
-                  tickLine={false}
-                  label={{
-                    value: "Average accuracy",
-                    angle: -90,
-                    position: "insideLeft",
-                    offset: -2,
-                    fill: "#94a3b8",
-                  }}
-                />
-                <ReferenceLine
-                  segment={[
-                    { x: 0, y: 0 },
-                    { x: 100, y: 100 },
-                  ]}
-                  stroke="rgba(226, 232, 240, 0.38)"
-                  strokeDasharray="6 6"
-                />
-                <Tooltip
-                  cursor={{ strokeDasharray: "4 4" }}
-                  contentStyle={tooltipStyle()}
-                  formatter={(value, name) => [
-                    `${numericValue(value).toFixed(1)}%`,
-                    name === "agreement_pct" ? "Average agreement" : "Average accuracy",
-                  ]}
-                  labelFormatter={(_, payload) =>
-                    payload?.[0] && "payload" in payload[0] && payload[0].payload
-                      ? String((payload[0].payload as { model_name: string }).model_name)
-                      : ""
-                  }
-                />
-                <Scatter data={accuracyAgreementScatterData} shape={<ScatterPoint />}>
-                  <LabelList dataKey="model_name" position="top" fill="#e2e8f0" fontSize={11} />
-                  {accuracyAgreementScatterData.map((entry) => (
-                    <Cell key={entry.model_name} fill={entry.fill} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {averageAccuracyGap != null ? (
-          <p className="table-note">
-            Across accuracy-aware models, agreement and accuracy differ by{" "}
-            {Math.round(averageAccuracyGap)} points on average.
-          </p>
-        ) : null}
-      </section>
-
       <div className="dual-chart-row">
         <section className="visual-card dashboard-section-card">
           <SectionHeader
@@ -342,13 +191,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                     cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
                     formatter={(value) => [`${numericValue(value).toFixed(1)}%`, "Accuracy"]}
                   />
-                  <Bar
-                    dataKey="primary_accuracy_pct"
-                    name="primary_accuracy_pct"
-                    fill="#22c55e"
-                    fillOpacity={0.92}
-                    radius={[0, 12, 12, 0]}
-                  >
+                  <Bar dataKey="primary_accuracy_pct" fill="#22c55e" fillOpacity={0.92} radius={[0, 12, 12, 0]}>
                     <LabelList
                       dataKey="primary_accuracy_pct"
                       position="right"
@@ -408,13 +251,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                     cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
                     formatter={(value) => [`${numericValue(value).toFixed(1)}%`, "Agreement"]}
                   />
-                  <Bar
-                    dataKey="agreement_pct"
-                    name="agreement_pct"
-                    fill="#4c9aff"
-                    fillOpacity={0.92}
-                    radius={[0, 12, 12, 0]}
-                  >
+                  <Bar dataKey="agreement_pct" fill="#4c9aff" fillOpacity={0.92} radius={[0, 12, 12, 0]}>
                     <LabelList
                       dataKey="agreement_pct"
                       position="right"
@@ -499,63 +336,6 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
           </div>
         )}
       </section>
-
-      {costScatterData.length > 1 ? (
-        <section className="visual-card dashboard-section-card">
-          <SectionHeader
-            eyebrow="Cost Efficiency"
-            title="Who delivers the best accuracy per dollar?"
-            description="Each dot is a model. Up is better verified accuracy, left is lower total cost."
-          />
-
-          <div className="chart-stage-large">
-            <ResponsiveContainer width="100%" height={360}>
-              <ScatterChart margin={{ top: 12, right: 36, left: 12, bottom: 18 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-                <XAxis
-                  type="number"
-                  dataKey="total_cost"
-                  domain={costScatterXDomain ?? [0, 1]}
-                  tick={{ fill: "#94a3b8", fontSize: 12 }}
-                  tickFormatter={(value) => `$${numericValue(value).toFixed(2)}`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="primary_accuracy_pct"
-                  domain={costScatterYDomain ?? [0, 100]}
-                  tick={{ fill: "#94a3b8", fontSize: 12 }}
-                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  cursor={{ strokeDasharray: "3 3" }}
-                  contentStyle={tooltipStyle()}
-                  formatter={(value, name) => [
-                    name === "total_cost"
-                      ? formatMoney(numericValue(value))
-                      : `${numericValue(value).toFixed(1)}%`,
-                    name === "total_cost" ? "Total cost" : "Best available accuracy",
-                  ]}
-                  labelFormatter={(_, payload) =>
-                    payload?.[0] && "payload" in payload[0] && payload[0].payload
-                      ? String((payload[0].payload as { model_name: string }).model_name)
-                      : ""
-                  }
-                />
-                <Scatter data={costScatterData} shape={<ScatterPoint />}>
-                  <LabelList dataKey="model_name" position="top" fill="#e2e8f0" fontSize={11} />
-                  {costScatterData.map((entry) => (
-                    <Cell key={entry.model_name} fill={entry.fill} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
