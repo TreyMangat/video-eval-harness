@@ -15,7 +15,7 @@ models:
   - llama-4-maverick
 
 # Prompt template to use (concise, rich, strict_json)
-prompt_version: "action_label"
+prompt_version: "action_label_optimized"
 
 # Segmentation settings
 segmentation:

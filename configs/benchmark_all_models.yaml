@@ -8,7 +8,7 @@ models:
   - gpt-5.4-mini
   - qwen3.5-27b
 
-prompt_version: "action_label"
+prompt_version: "action_label_optimized"
 
 segmentation:
   mode: fixed_window

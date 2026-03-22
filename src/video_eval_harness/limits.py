@@ -10,8 +10,18 @@ PUBLIC_LIMITS = {
     "max_clip_duration_s": 60,
     "max_file_size_mb": 100,
     "max_segments": 6,
-    "max_models": 3,
-    "allowed_models": ["gemini-3-flash", "gpt-5.4-mini", "qwen3.5-27b"],  # fast tier only
+    "max_models": 7,
+    "allowed_models": [
+        # Fast tier
+        "gemini-3-flash",
+        "gpt-5.4-mini",
+        "qwen3.5-27b",
+        # Frontier tier
+        "gemini-3.1-pro",
+        "gpt-5.4",
+        "qwen3.5-vl",
+        "llama-4-maverick",
+    ],
     "max_frames_per_segment": 8,
     "extraction_methods": ["uniform"],  # no keyframe for public (needs OpenCV)
     "max_concurrent_jobs": 3,

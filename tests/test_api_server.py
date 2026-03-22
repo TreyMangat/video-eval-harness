@@ -54,11 +54,15 @@ def test_get_health_returns_limits_structure(client) -> None:
     assert payload["version"] == "0.3.0"
     assert payload["limits"]["max_clip_s"] == 60
     assert payload["limits"]["max_file_size_mb"] == 100
-    assert payload["limits"]["max_models"] == 3
+    assert payload["limits"]["max_models"] == 7
     assert payload["limits"]["allowed_models"] == [
         "gemini-3-flash",
         "gpt-5.4-mini",
         "qwen3.5-27b",
+        "gemini-3.1-pro",
+        "gpt-5.4",
+        "qwen3.5-vl",
+        "llama-4-maverick",
     ]
 
 

@@ -308,6 +308,7 @@ def run_benchmark(
     public: bool = typer.Option(False, "--public", help="Enforce public cost limits (for Modal API)"),
     llm_judge: bool = typer.Option(False, "--llm-judge", help="Use LLM to score agreement (~$0.001/pair)"),
     input_mode: str = typer.Option("frames", "--input-mode", help="Input mode: frames, video, or auto"),
+    custom_model: Optional[list[str]] = typer.Option(None, "--custom-model", help="Add a custom OpenRouter model ID (can be repeated)"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -316,6 +317,7 @@ def run_benchmark(
     Settings are read from benchmark.yaml, with CLI flags as overrides.
     Use --sweep to run a multi-config extraction sweep.
     Use --input-mode video/auto to send raw video to models that support it.
+    Use --custom-model to add any OpenRouter model without editing YAML.
     Use --dry-run with --sweep to preview the matrix without API calls.
     Use --model-filter to run only a subset of models from the config.
     Use --ground-truth to evaluate against known labels.
@@ -347,6 +349,23 @@ def run_benchmark(
         bench_cfg = load_benchmark_config(config_file)
 
     models_cfg = load_models_config(models_file)
+
+    # Inject custom models from --custom-model flags
+    if custom_model:
+        from .config import ModelConfig as _MC
+        for model_id in custom_model:
+            short_name = model_id.split("/")[-1]
+            models_cfg[short_name] = _MC(
+                name=short_name, model_id=model_id, provider="openrouter",
+                max_tokens=2048, temperature=0.1, supports_images=True,
+                tier="custom", notes="Custom model added via --custom-model",
+            )
+            # Also add to the benchmark config's model list
+            if bench_cfg and short_name not in (bench_cfg.models or []):
+                bench_cfg.models.append(short_name)
+            if sweep_cfg and short_name not in (sweep_cfg.benchmark.models or []):
+                sweep_cfg.benchmark.models.append(short_name)
+        console.print(f"Added custom model(s): {', '.join(m.split('/')[-1] for m in custom_model)}")
 
     # CLI overrides for sweep axes
     if frames is not None or methods is not None:
@@ -1420,6 +1439,7 @@ def estimate(
     adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ego4d, buildai)"),
     data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Data directory for dataset adapters"),
     manifest: Optional[str] = typer.Option(None, "--manifest", help="Manifest path for ego4d adapter"),
+    custom_model: Optional[list[str]] = typer.Option(None, "--custom-model", help="Add a custom OpenRouter model ID (can be repeated)"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
     """Estimate API calls, cost, and time without running anything.
@@ -1433,6 +1453,19 @@ def estimate(
 
     bench_cfg = load_benchmark_config(config_file)
     models_cfg = load_models_config(models_file)
+
+    # Inject custom models
+    if custom_model:
+        from .config import ModelConfig as _MC
+        for model_id in custom_model:
+            short_name = model_id.split("/")[-1]
+            models_cfg[short_name] = _MC(
+                name=short_name, model_id=model_id, provider="openrouter",
+                max_tokens=2048, temperature=0.1, supports_images=True,
+                tier="custom",
+            )
+            if short_name not in (bench_cfg.models or []):
+                bench_cfg.models.append(short_name)
 
     # Resolve models
     model_names = bench_cfg.models if bench_cfg.models else list(models_cfg.keys())
