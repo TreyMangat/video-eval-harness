@@ -9,8 +9,10 @@ import {
   formatMoney,
   formatPercent,
   getSweepData,
+  modelColor,
 } from "../lib/analysis";
 import type { RunListItem, RunPayload } from "../lib/types";
+import { AggregateVisualsClient } from "./aggregate-visuals-client";
 import { TopNav } from "./navigation";
 
 export interface AggregateStats {
@@ -29,6 +31,8 @@ export interface AggregateModelRow {
   total_cost: number;
   run_count: number;
 }
+
+export type AggregateAgreementMatrix = Record<string, Record<string, number | null>>;
 
 function average(values: number[]): number | null {
   if (values.length === 0) {
@@ -52,10 +56,16 @@ function buildHref(
 }
 
 function summarizeModelNames(models: string[]): string {
-  if (models.length <= 3) {
-    return models.join(", ");
+  if (models.length === 0) {
+    return "No models loaded";
   }
-  return `${models.slice(0, 3).join(", ")} +${models.length - 3} more`;
+  if (models.length === 1) {
+    return models[0];
+  }
+  if (models.length === 2) {
+    return `${models[0]}, ${models[1]}`;
+  }
+  return `${models[0]}, ${models[1]} +${models.length - 2} more`;
 }
 
 function formatConfidence(value: number | null): string {
@@ -76,6 +86,32 @@ function confidenceClass(value: number | null): string {
     return "confidence-mid";
   }
   return "confidence-low";
+}
+
+function scoreTone(value: number | null): "high" | "mid" | "low" | "none" {
+  if (value == null) {
+    return "none";
+  }
+  if (value >= 0.8) {
+    return "high";
+  }
+  if (value >= 0.5) {
+    return "mid";
+  }
+  return "low";
+}
+
+function heatColor(value: number): string {
+  if (value >= 0.8) {
+    return "rgba(34, 197, 94, 0.25)";
+  }
+  if (value >= 0.5) {
+    return "rgba(245, 158, 11, 0.2)";
+  }
+  if (value >= 0.3) {
+    return "rgba(245, 158, 11, 0.12)";
+  }
+  return "rgba(239, 68, 68, 0.1)";
 }
 
 function sortAggregateRows(rows: AggregateModelRow[]): AggregateModelRow[] {
@@ -184,6 +220,52 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
   );
 }
 
+export function computeAggregateAgreementMatrix(
+  runs: RunPayload[]
+): AggregateAgreementMatrix {
+  const models = new Set<string>();
+  const pairSums = new Map<string, number>();
+  const pairCounts = new Map<string, number>();
+
+  for (const run of runs) {
+    for (const modelName of run.models) {
+      models.add(modelName);
+    }
+
+    for (const [rowModel, row] of Object.entries(run.agreement)) {
+      models.add(rowModel);
+      for (const [columnModel, score] of Object.entries(row)) {
+        models.add(columnModel);
+        if (rowModel === columnModel) {
+          continue;
+        }
+        const key = `${rowModel}::${columnModel}`;
+        pairSums.set(key, (pairSums.get(key) ?? 0) + score);
+        pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+      }
+    }
+  }
+
+  const matrix: AggregateAgreementMatrix = {};
+  const modelList = [...models].sort();
+
+  for (const rowModel of modelList) {
+    matrix[rowModel] = {};
+    for (const columnModel of modelList) {
+      if (rowModel === columnModel) {
+        matrix[rowModel][columnModel] = 1;
+        continue;
+      }
+      const key = `${rowModel}::${columnModel}`;
+      const count = pairCounts.get(key) ?? 0;
+      matrix[rowModel][columnModel] =
+        count > 0 ? (pairSums.get(key) ?? 0) / count : null;
+    }
+  }
+
+  return matrix;
+}
+
 function indexedVideoCount(runList: RunListItem[]): number {
   return new Set(runList.flatMap((run) => run.video_ids)).size;
 }
@@ -192,21 +274,100 @@ function indexedModels(runList: RunListItem[]): string[] {
   return [...new Set(runList.flatMap((run) => run.models))].sort();
 }
 
+function medalClass(index: number): string {
+  if (index === 0) {
+    return "medal-gold";
+  }
+  if (index === 1) {
+    return "medal-silver";
+  }
+  if (index === 2) {
+    return "medal-bronze";
+  }
+  return "";
+}
+
 function AggregateStatCard({
   label,
   value,
   secondary,
+  accentColor,
 }: {
   label: string;
   value: string;
   secondary: string;
+  accentColor: string;
 }) {
   return (
-    <article className="hero-card">
+    <article className="hero-card" style={{ borderTopColor: accentColor }}>
       <p className="hero-card-label">{label}</p>
-      <p className="hero-card-number">{value}</p>
+      <p className="hero-card-number" style={{ color: accentColor }}>
+        {value}
+      </p>
       <p className="hero-card-secondary">{secondary}</p>
     </article>
+  );
+}
+
+function AggregateAgreementMatrixCard({
+  matrix,
+}: {
+  matrix: AggregateAgreementMatrix;
+}) {
+  const models = Object.keys(matrix).filter((modelName) =>
+    Object.entries(matrix[modelName] ?? {}).some(
+      ([otherModel, value]) => otherModel !== modelName && value != null
+    )
+  );
+
+  if (models.length < 2) {
+    return null;
+  }
+
+  return (
+    <section className="visual-card agreement-section dashboard-section-card">
+      <div className="section-heading">
+        <p className="section-eyebrow">Agreement Heatmap</p>
+        <h3>Where does cross-run consensus stay strong?</h3>
+        <p className="chart-desc">
+          These cells average pairwise agreement only across runs where both models appeared
+          together, so blank cells simply mean there was no overlap in the loaded history.
+        </p>
+      </div>
+
+      <div className="matrix-scroll">
+        <table className="agreement-table aggregate-matrix-table">
+          <thead>
+            <tr>
+              <th />
+              {models.map((modelName) => (
+                <th key={`column-${modelName}`}>{modelName}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {models.map((rowModel) => (
+              <tr key={`row-${rowModel}`}>
+                <td className="matrix-row-label">{rowModel}</td>
+                {models.map((columnModel) => {
+                  const value = matrix[rowModel]?.[columnModel] ?? null;
+                  const isMissing = value == null;
+                  return (
+                    <td
+                      key={`${rowModel}-${columnModel}`}
+                      className={`matrix-cell mono ${isMissing ? "aggregate-matrix-missing" : ""}`}
+                      style={value == null ? undefined : { background: heatColor(value) }}
+                    >
+                      {value == null ? "—" : formatPercent(value)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -228,6 +389,7 @@ export function AggregateDashboard({
   const recentRuns = runList.slice(0, 10);
   const aggregateStats = computeAggregateStats(runs);
   const leaderboard = computeAggregateLeaderboard(runs);
+  const aggregateAgreementMatrix = computeAggregateAgreementMatrix(runs);
   const totalRuns = runList.length;
   const totalVideos = indexedVideoCount(runList);
   const allModels = indexedModels(runList);
@@ -241,7 +403,7 @@ export function AggregateDashboard({
     return (
       <main className="analysis-shell">
         <TopNav active="dashboard" />
-        <section className="visual-card aggregate-hero">
+        <section className="visual-card aggregate-hero dashboard-section-card">
           <div className="section-heading">
             <p className="section-eyebrow">Dashboard</p>
             <h2 className="run-title">No benchmark runs found yet.</h2>
@@ -251,10 +413,10 @@ export function AggregateDashboard({
             </p>
           </div>
           <div className="aggregate-hero-actions">
-            <Link href={buildHref("/new", { dataDir })} className="primary-btn">
+            <Link href={buildHref("/new", { dataDir })} className="ghost-btn small aggregate-action-btn">
               New Benchmark
             </Link>
-            <Link href={buildHref("/runs", { dataDir })} className="ghost-btn">
+            <Link href={buildHref("/runs", { dataDir })} className="ghost-btn small aggregate-action-btn">
               Browse Runs
             </Link>
           </div>
@@ -267,190 +429,203 @@ export function AggregateDashboard({
     <main className="analysis-shell">
       <TopNav active="dashboard" />
 
-      <section className="visual-card aggregate-hero dashboard-section-card">
-        <div className="aggregate-hero-copy">
-          <div className="section-heading">
-            <p className="section-eyebrow">Dashboard</p>
-            <h2 className="run-title">How are models trending across recent benchmarks?</h2>
-            <p className="chart-desc">
-              This view merges committed static exports with live Modal runs, then rolls the loaded
-              run payloads into one cross-run leaderboard.
+      <div className="aggregate-dashboard-stack">
+        <section className="visual-card aggregate-hero dashboard-section-card">
+          <div className="aggregate-hero-copy">
+            <div className="section-heading">
+              <p className="section-eyebrow">Dashboard</p>
+              <h2 className="run-title">How are models trending across recent benchmarks?</h2>
+              <p className="chart-desc">
+                The aggregate view keeps the upload flow out of the way and surfaces the patterns
+                that matter across both committed static runs and live Modal benchmarks.
+              </p>
+            </div>
+            <p className="aggregate-hero-note">
+              {allRunsLoaded
+                ? `All ${loadedRunCount} available runs are loaded into the aggregate leaderboard.`
+                : `Showing aggregate metrics from ${loadedRunCount} loaded runs out of ${totalRuns}. Load more history to pull older runs into the charts and leaderboard.`}
             </p>
           </div>
-          <p className="aggregate-hero-note">
-            {allRunsLoaded
-              ? `All ${loadedRunCount} runs are loaded for aggregate scoring.`
-              : `Showing aggregate scoring from ${loadedRunCount} loaded runs out of ${totalRuns}. Load more history to include older runs.`}
-          </p>
-        </div>
-        <div className="aggregate-hero-actions">
-          <Link href={buildHref("/new", { dataDir })} className="primary-btn">
-            New Benchmark
-          </Link>
-          <Link href={buildHref("/runs", { dataDir })} className="ghost-btn">
-            Browse All Runs
-          </Link>
-          {loadMoreHref ? (
-            <Link href={loadMoreHref} className="ghost-btn">
-              Load More History
+
+          <div className="aggregate-hero-actions">
+            <Link href={buildHref("/new", { dataDir })} className="ghost-btn small aggregate-action-btn">
+              New Benchmark
             </Link>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="hero-grid aggregate-stat-grid">
-        <AggregateStatCard
-          label="Total Runs Completed"
-          value={String(totalRuns)}
-          secondary="Static exports plus live backend runs"
-        />
-        <AggregateStatCard
-          label="Total Videos Analyzed"
-          value={String(totalVideos)}
-          secondary="Deduplicated across the indexed run history"
-        />
-        <AggregateStatCard
-          label={allRunsLoaded ? "Total API Cost" : "Loaded API Cost"}
-          value={formatMoney(aggregateStats.total_cost)}
-          secondary={
-            allRunsLoaded
-              ? "Summed across every loaded run payload"
-              : `Summed across the ${loadedRunCount} runs loaded for aggregate analysis`
-          }
-        />
-        <AggregateStatCard
-          label="Models Tested"
-          value={String(allModels.length)}
-          secondary={allModels.length > 0 ? summarizeModelNames(allModels) : "No models found"}
-        />
-      </section>
-
-      <section className="visual-card dashboard-section-card">
-        <div className="section-heading">
-          <p className="section-eyebrow">Cross-Run Leaderboard</p>
-          <h3>Which models are strongest across the loaded run history?</h3>
-          <p className="chart-desc">
-            Each row averages the model&apos;s per-run agreement, accuracy, confidence, and latency,
-            then totals cost across the runs it participated in.
-          </p>
-        </div>
-
-        {leaderboard.length === 0 ? (
-          <p className="empty-state">No full run payloads were available to build the leaderboard.</p>
-        ) : (
-          <div className="leaderboard-scroll">
-            <table className="leaderboard-table aggregate-leaderboard-table">
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>Model</th>
-                  <th>Avg Agreement</th>
-                  <th>Avg Accuracy</th>
-                  <th>Avg Confidence</th>
-                  <th>Avg Latency</th>
-                  <th>Total Cost</th>
-                  <th>Runs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaderboard.map((row, index) => (
-                  <tr
-                    key={row.model_name}
-                    className={`leaderboard-row ${index === 0 ? "top-ranked" : ""}`}
-                  >
-                    <td className="leaderboard-rank">#{index + 1}</td>
-                    <td>
-                      <div className="aggregate-model-cell">
-                        <strong>{row.model_name}</strong>
-                        <span>
-                          {row.run_count} {row.run_count === 1 ? "run" : "runs"} loaded
-                        </span>
-                      </div>
-                    </td>
-                    <td>{formatPercent(row.avg_agreement)}</td>
-                    <td>{formatPercent(row.avg_accuracy)}</td>
-                    <td className={confidenceClass(row.avg_confidence)}>
-                      {formatConfidence(row.avg_confidence)}
-                    </td>
-                    <td>{formatLatency(row.avg_latency_ms)}</td>
-                    <td>{formatMoney(row.total_cost)}</td>
-                    <td>{row.run_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <Link href={buildHref("/runs", { dataDir })} className="ghost-btn small aggregate-action-btn">
+              Browse All Runs
+            </Link>
+            {loadMoreHref ? (
+              <Link href={loadMoreHref} className="ghost-btn small aggregate-action-btn">
+                Load More History
+              </Link>
+            ) : null}
           </div>
-        )}
-      </section>
+        </section>
 
-      <section className="visual-card dashboard-section-card">
-        <div className="section-heading">
-          <p className="section-eyebrow">Recent Runs</p>
-          <h3>Jump into a specific benchmark report.</h3>
-          <p className="chart-desc">
-            Use the report view for the per-run deep dive. These are the 10 most recent runs from
-            the merged static and live history.
-          </p>
-        </div>
+        <section className="aggregate-stats-grid">
+          <AggregateStatCard
+            label="Total Runs Completed"
+            value={String(totalRuns)}
+            secondary="Merged static exports and live backend runs"
+            accentColor="#4c9aff"
+          />
+          <AggregateStatCard
+            label="Videos Analyzed"
+            value={String(totalVideos)}
+            secondary="Deduplicated across the indexed benchmark history"
+            accentColor="#38bdf8"
+          />
+          <AggregateStatCard
+            label={allRunsLoaded ? "Total API Cost" : "Loaded API Cost"}
+            value={formatMoney(aggregateStats.total_cost)}
+            secondary={
+              allRunsLoaded
+                ? "Summed across every loaded run payload"
+                : `${loadedRunCount} loaded runs contributing to current charts`
+            }
+            accentColor="#f59e0b"
+          />
+          <AggregateStatCard
+            label="Models Tested"
+            value={String(allModels.length)}
+            secondary={summarizeModelNames(allModels)}
+            accentColor="#22c55e"
+          />
+        </section>
 
-        <div className="table-scroll">
-          <table className="data-table recent-runs-table">
-            <thead>
-              <tr>
-                <th>Run</th>
-                <th>Date</th>
-                <th>Models</th>
-                <th>Videos</th>
-                <th>Open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentRuns.map((run) => (
-                <tr key={run.run_id}>
-                  <td>
-                    <div className="run-list-cell">
-                      <Link
-                        href={buildHref(`/report/${run.run_id}`, { dataDir })}
-                        className="recent-run-link"
+        <AggregateVisualsClient rows={leaderboard} />
+
+        <AggregateAgreementMatrixCard matrix={aggregateAgreementMatrix} />
+
+        <section className="visual-card dashboard-section-card">
+          <div className="section-heading">
+            <p className="section-eyebrow">Cross-Run Leaderboard</p>
+            <h3>Which models stay strongest across the loaded run history?</h3>
+            <p className="chart-desc">
+              Agreement is shown with an inline score bar, confidence is color-coded, and the run
+              count tells you how much history sits behind each average.
+            </p>
+          </div>
+
+          {leaderboard.length === 0 ? (
+            <p className="empty-state">No full run payloads were available to build the leaderboard.</p>
+          ) : (
+            <div className="leaderboard-scroll">
+              <table className="leaderboard-table aggregate-leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Model</th>
+                    <th>Avg Agreement</th>
+                    <th>Avg Accuracy</th>
+                    <th>Avg Confidence</th>
+                    <th>Avg Latency</th>
+                    <th>Total Cost</th>
+                    <th>Runs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((row, index) => {
+                    const medal = medalClass(index);
+                    const agreementTone = scoreTone(row.avg_agreement);
+                    return (
+                      <tr
+                        key={row.model_name}
+                        className={`leaderboard-row aggregate-leaderboard-row ${index === 0 ? "top-ranked" : ""} ${medal}`}
+                        style={{ boxShadow: `inset 4px 0 0 ${modelColor(row.model_name)}` }}
                       >
-                        {displayRunName(run.run_id, run.created_at)}
-                      </Link>
-                      <p className="run-list-raw">{run.run_id}</p>
-                    </div>
-                  </td>
-                  <td>{formatDateTime(run.created_at)}</td>
-                  <td title={run.models.join(", ")}>
-                    <div className="aggregate-tag-list">
-                      {run.models.map((modelName) => (
-                        <span key={`${run.run_id}-${modelName}`} className="model-tag">
-                          {modelName}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td title={run.video_ids.join(", ")}>
-                    {run.video_ids.length === 0
-                      ? "-"
-                      : run.video_ids
-                          .slice(0, 2)
-                          .map((videoId) => displayVideoName(videoId))
-                          .join(", ")}
-                    {run.video_ids.length > 2 ? ` +${run.video_ids.length - 2}` : ""}
-                  </td>
-                  <td>
-                    <Link
-                      href={buildHref(`/report/${run.run_id}`, { dataDir })}
-                      className="ghost-btn small"
+                        <td className={`leaderboard-rank ${medal}`}>
+                          <span className={`leaderboard-rank-pill ${medal}`}>#{index + 1}</span>
+                        </td>
+                        <td>
+                          <div className="aggregate-model-cell">
+                            <strong>{row.model_name}</strong>
+                            <span>
+                              {row.run_count} {row.run_count === 1 ? "run" : "runs"} loaded
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className={`aggregate-score-track ${agreementTone}`}>
+                            <span
+                              className={`aggregate-score-fill ${agreementTone}`}
+                              style={{ width: `${Math.max(0, Math.min(100, (row.avg_agreement ?? 0) * 100))}%` }}
+                            />
+                            <span className="aggregate-score-label">
+                              {formatPercent(row.avg_agreement)}
+                            </span>
+                          </div>
+                        </td>
+                        <td>{formatPercent(row.avg_accuracy)}</td>
+                        <td className={confidenceClass(row.avg_confidence)}>
+                          {formatConfidence(row.avg_confidence)}
+                        </td>
+                        <td>{formatLatency(row.avg_latency_ms)}</td>
+                        <td>{formatMoney(row.total_cost)}</td>
+                        <td>{row.run_count}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="aggregate-recent-section">
+          <div className="section-heading">
+            <p className="section-eyebrow">Recent Runs</p>
+            <h3>Jump from the overview into a specific benchmark report.</h3>
+            <p className="chart-desc">
+              Each card links straight into the per-run report page, with model chips and recent
+              video context kept visible at a glance.
+            </p>
+          </div>
+
+          <div className="recent-runs-grid">
+            {recentRuns.map((run) => (
+              <article key={run.run_id} className="visual-card recent-run-card">
+                <div className="recent-run-card-head">
+                  <div className="run-list-cell">
+                    <p className="run-list-name">{displayRunName(run.run_id, run.created_at)}</p>
+                    <p className="run-list-raw">{run.run_id}</p>
+                  </div>
+                  <p className="recent-run-card-date">{formatDateTime(run.created_at)}</p>
+                </div>
+
+                <div className="aggregate-tag-list">
+                  {run.models.map((modelName) => (
+                    <span
+                      key={`${run.run_id}-${modelName}`}
+                      className="model-tag"
+                      style={{
+                        background: `${modelColor(modelName)}22`,
+                        color: modelColor(modelName),
+                        borderColor: `${modelColor(modelName)}55`,
+                      }}
                     >
-                      Open report
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                      {modelName}
+                    </span>
+                  ))}
+                </div>
+
+                <p className="recent-run-card-videos">
+                  {run.video_ids.length === 0
+                    ? "No video metadata available"
+                    : run.video_ids.map((videoId) => displayVideoName(videoId)).join(", ")}
+                </p>
+
+                <Link
+                  href={buildHref(`/report/${run.run_id}`, { dataDir })}
+                  className="recent-run-card-link"
+                >
+                  Open Report →
+                </Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

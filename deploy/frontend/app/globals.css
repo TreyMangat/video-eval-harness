@@ -1333,7 +1333,6 @@ textarea:focus {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 22px;
 }
 
 .aggregate-hero-copy {
@@ -1356,9 +1355,28 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.aggregate-stat-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 22px;
+.aggregate-dashboard-stack {
+  display: grid;
+  gap: 32px;
+}
+
+.aggregate-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.aggregate-action-btn {
+  opacity: 0.88;
+}
+
+.aggregate-action-btn:hover {
+  opacity: 1;
+}
+
+.aggregate-visual-stack {
+  display: grid;
+  gap: 32px;
 }
 
 .visual-card {
@@ -1447,8 +1465,137 @@ textarea:focus {
   gap: 6px;
 }
 
-.recent-runs-table td {
-  vertical-align: top;
+.aggregate-leaderboard-table td {
+  position: relative;
+}
+
+.aggregate-leaderboard-row {
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.aggregate-leaderboard-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.leaderboard-rank-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.leaderboard-rank-pill.medal-gold {
+  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.14);
+  color: #fde68a;
+}
+
+.leaderboard-rank-pill.medal-silver {
+  border-color: rgba(203, 213, 225, 0.35);
+  background: rgba(203, 213, 225, 0.12);
+  color: #e2e8f0;
+}
+
+.leaderboard-rank-pill.medal-bronze {
+  border-color: rgba(251, 146, 60, 0.35);
+  background: rgba(251, 146, 60, 0.12);
+  color: #fdba74;
+}
+
+.aggregate-score-track {
+  position: relative;
+  min-width: 132px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.82);
+  padding: 7px 12px;
+}
+
+.aggregate-score-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+
+.aggregate-score-fill.high {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.9), rgba(74, 222, 128, 0.72));
+}
+
+.aggregate-score-fill.mid {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.88), rgba(234, 179, 8, 0.74));
+}
+
+.aggregate-score-fill.low {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.88), rgba(248, 113, 113, 0.72));
+}
+
+.aggregate-score-label {
+  position: relative;
+  z-index: 1;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.aggregate-matrix-table .aggregate-matrix-missing {
+  color: var(--muted);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.aggregate-recent-section .section-heading {
+  margin-bottom: 18px;
+}
+
+.recent-runs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.recent-run-card {
+  display: grid;
+  gap: 14px;
+  min-height: 220px;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.recent-run-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(76, 154, 255, 0.4);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
+}
+
+.recent-run-card-head {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-run-card-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.recent-run-card-videos {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.recent-run-card-link {
+  color: #7dd3fc;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.recent-run-card-link:hover {
+  color: #bae6fd;
 }
 
 .visual-card::before,
@@ -2879,6 +3026,18 @@ textarea:focus {
   }
 }
 
+@media (max-width: 900px) {
+  .aggregate-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .aggregate-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1080px) {
   .setup-grid {
     grid-template-columns: 1fr;
@@ -2942,6 +3101,10 @@ textarea:focus {
 
   .agreement-heatmap {
     overflow-x: auto;
+  }
+
+  .aggregate-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .aggregate-hero {
@@ -3023,6 +3186,10 @@ textarea:focus {
 
   .segment-thumb-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aggregate-stats-grid {
+    grid-template-columns: 1fr;
   }
 
   .aggregate-hero-actions {
