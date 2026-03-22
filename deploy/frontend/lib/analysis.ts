@@ -114,6 +114,34 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function safeModels(run: RunPayload): string[] {
+  return Array.isArray(run.models) ? run.models : [];
+}
+
+function safeVideos(run: RunPayload): RunPayload["videos"] {
+  return Array.isArray(run.videos) ? run.videos : [];
+}
+
+function safeVideoIds(run: RunPayload): string[] {
+  return Array.isArray(run.config?.video_ids) ? run.config.video_ids : [];
+}
+
+function safeSegments(run: RunPayload): SegmentSummary[] {
+  return Array.isArray(run.segments) ? run.segments : [];
+}
+
+function safeResults(run: RunPayload): LabelResult[] {
+  return Array.isArray(run.results) ? run.results : [];
+}
+
+function safeSummaries(run: RunPayload): Record<string, ModelSummary> {
+  return run.summaries && typeof run.summaries === "object" ? run.summaries : {};
+}
+
+function safeAgreement(run: RunPayload): Record<string, Record<string, number>> {
+  return run.agreement && typeof run.agreement === "object" ? run.agreement : {};
+}
+
 function titleCaseToken(value: string): string {
   if (!value) {
     return value;
@@ -302,25 +330,30 @@ export function resultVariantLabel(result: LabelResult): string {
 }
 
 export function getRunVideoLabel(run: RunPayload): string {
-  const explicitVideoCount = run.config.video_ids.length;
+  const videoIds = safeVideoIds(run);
+  const videos = safeVideos(run);
+  const explicitVideoCount = videoIds.length;
   if (explicitVideoCount > 1) {
     return `${explicitVideoCount} videos`;
   }
   return (
-    run.videos[0]?.filename ||
-    (run.videos[0]?.video_id ? displayVideoName(run.videos[0].video_id) : null) ||
-    (run.config.video_ids[0] ? displayVideoName(run.config.video_ids[0]) : null) ||
+    videos[0]?.filename ||
+    (videos[0]?.video_id ? displayVideoName(videos[0].video_id) : null) ||
+    (videoIds[0] ? displayVideoName(videoIds[0]) : null) ||
     "Unknown video"
   );
 }
 
 export function runBreadcrumb(run: RunPayload): string {
-  const videoCount = run.config.video_ids.length || run.videos.length || 0;
+  const models = safeModels(run);
+  const segments = safeSegments(run);
+  const videos = safeVideos(run);
+  const videoCount = safeVideoIds(run).length || videos.length || 0;
   return [
     displayRunName(run.run_id, run.config.created_at),
-    `${run.models.length} ${run.models.length === 1 ? "model" : "models"}`,
+    `${models.length} ${models.length === 1 ? "model" : "models"}`,
     `${videoCount} ${videoCount === 1 ? "video" : "videos"}`,
-    `${run.segments.length} ${run.segments.length === 1 ? "segment" : "segments"}`,
+    `${segments.length} ${segments.length === 1 ? "segment" : "segments"}`,
   ].join(" \u00b7 ");
 }
 
@@ -328,7 +361,7 @@ export function getSweepData(run: RunPayload): SweepMetrics | null {
   if (run.sweep?.has_sweep) {
     return run.sweep;
   }
-  const computed = computeSweepMetrics(run.results);
+  const computed = computeSweepMetrics(safeResults(run));
   return computed.has_sweep ? computed : null;
 }
 
@@ -396,17 +429,20 @@ export function buildCoreComparisonRows(
   run: RunPayload,
   sweepData: SweepMetrics | null
 ): CoreComparisonRow[] {
+  const models = safeModels(run);
+  const summaries = safeSummaries(run);
+  const agreement = safeAgreement(run);
   const stabilityByModel = new Map(
     (sweepData?.stability ?? []).map((entry) => [entry.model_name, entry.rank_stability])
   );
 
-  return run.models
+  return models
     .map((modelName) => {
-      const summary = run.summaries[modelName];
+      const summary = summaries[modelName];
       return {
         model_name: modelName,
         parse_rate: summary?.parse_success_rate ?? null,
-        agreement: meanModelAgreement(run.agreement, modelName),
+        agreement: meanModelAgreement(agreement, modelName),
         accuracy: summary?.exact_match_rate ?? null,
         llm_accuracy: resolveLlmAccuracy(summary),
         fuzzy_accuracy: summary?.fuzzy_match_rate ?? null,
@@ -546,12 +582,14 @@ export function selectSampleSegments(
   variantLabel: string | null,
   limit = 3
 ): SegmentComparisonSample[] {
-  const filteredResults = filterResultsByVariant(run.results, variantLabel);
+  const segments = safeSegments(run);
+  const filteredResults = filterResultsByVariant(safeResults(run), variantLabel);
+  const agreement = safeAgreement(run);
   const preferredAgreementMatrix =
     (variantLabel ? run.sweep?.agreement_by_variant?.[variantLabel] : null) ??
-    (Object.keys(run.agreement).length > 0 ? run.agreement : null);
+    (Object.keys(agreement).length > 0 ? agreement : null);
 
-  return run.segments
+  return segments
     .map((segment) => {
       const segmentResults = filteredResults
         .filter((result) => result.segment_id === segment.segment_id)
@@ -585,13 +623,17 @@ export function buildModelDeltaRows(
   leftRun: RunPayload,
   rightRun: RunPayload
 ): ModelDeltaRow[] {
-  const models = [...new Set([...leftRun.models, ...rightRun.models])].sort();
+  const models = [...new Set([...safeModels(leftRun), ...safeModels(rightRun)])].sort();
+  const leftSummaries = safeSummaries(leftRun);
+  const rightSummaries = safeSummaries(rightRun);
+  const leftAgreementMatrix = safeAgreement(leftRun);
+  const rightAgreementMatrix = safeAgreement(rightRun);
 
   return models.map((modelName) => {
-    const leftSummary = leftRun.summaries[modelName];
-    const rightSummary = rightRun.summaries[modelName];
-    const leftAgreement = meanModelAgreement(leftRun.agreement, modelName);
-    const rightAgreement = meanModelAgreement(rightRun.agreement, modelName);
+    const leftSummary = leftSummaries[modelName];
+    const rightSummary = rightSummaries[modelName];
+    const leftAgreement = meanModelAgreement(leftAgreementMatrix, modelName);
+    const rightAgreement = meanModelAgreement(rightAgreementMatrix, modelName);
 
     return {
       model_name: modelName,
@@ -621,19 +663,22 @@ export function buildCostBreakdown(
   run: RunPayload,
   sweepData: SweepMetrics | null
 ): CostBreakdown {
-  const totalCost = run.results.reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0);
+  const results = safeResults(run);
+  const models = safeModels(run);
+  const segments = safeSegments(run);
+  const totalCost = results.reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0);
 
-  const byModel = run.models
+  const byModel = models
     .map((modelName) => ({
       model_name: modelName,
-      total_cost: run.results
+      total_cost: results
         .filter((result) => result.model_name === modelName)
         .reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0),
     }))
     .sort((left, right) => right.total_cost - left.total_cost);
 
   const variantTotals = new Map<string, number>();
-  for (const result of run.results) {
+  for (const result of results) {
     const variantLabel = resultVariantLabel(result);
     variantTotals.set(
       variantLabel,
@@ -655,11 +700,9 @@ export function buildCostBreakdown(
       return right.total_cost - left.total_cost;
     });
 
-  const segmentLookup = new Map(
-    run.segments.map((segment) => [segment.segment_id, segment] as const)
-  );
+  const segmentLookup = new Map(segments.map((segment) => [segment.segment_id, segment] as const));
   const segmentTotals = new Map<string, CostBySegmentRow>();
-  for (const result of run.results) {
+  for (const result of results) {
     const segment = segmentLookup.get(result.segment_id);
     const current = segmentTotals.get(result.segment_id) ?? {
       segment_id: result.segment_id,
@@ -685,12 +728,13 @@ export function buildCostBreakdown(
 }
 
 export function groupSegmentsByVideo(run: RunPayload): Record<string, SegmentSummary[]> {
+  const segments = safeSegments(run);
   return Object.fromEntries(
-    [...new Set(run.segments.map((segment) => segment.video_id))]
+    [...new Set(segments.map((segment) => segment.video_id))]
       .sort()
       .map((videoId) => [
         videoId,
-        run.segments
+        segments
           .filter((segment) => segment.video_id === videoId)
           .sort((left, right) => left.start_time_s - right.start_time_s),
       ])

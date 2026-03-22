@@ -96,6 +96,41 @@ function parseJsonText(text: string): unknown {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isRunListItemLike(value: unknown): value is RunListItem {
+  return (
+    isRecord(value) &&
+    typeof value.run_id === "string" &&
+    typeof value.created_at === "string" &&
+    isStringArray(value.models) &&
+    isStringArray(value.video_ids)
+  );
+}
+
+function isRunPayloadLike(value: unknown): value is RunPayload {
+  if (!isRecord(value) || !isRecord(value.config)) {
+    return false;
+  }
+
+  return (
+    typeof value.run_id === "string" &&
+    isStringArray(value.models) &&
+    Array.isArray(value.videos) &&
+    isRecord(value.summaries) &&
+    isRecord(value.agreement) &&
+    Array.isArray(value.segments) &&
+    Array.isArray(value.results) &&
+    isStringArray(value.config.video_ids)
+  );
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -349,7 +384,11 @@ export async function fetchRuns(): Promise<RunListItem[]> {
     { cache: "no-store" },
     RUNS_TIMEOUT_MS
   );
-  return readJson<RunListItem[]>(response);
+  const payload = await readJson<unknown>(response);
+  if (!Array.isArray(payload)) {
+    throw new Error("Runs endpoint returned an invalid payload.");
+  }
+  return payload.filter(isRunListItemLike);
 }
 
 export async function fetchRun(runId: string): Promise<RunPayload> {
@@ -358,7 +397,11 @@ export async function fetchRun(runId: string): Promise<RunPayload> {
     { cache: "no-store" },
     RUNS_TIMEOUT_MS
   );
-  return readJson<RunPayload>(response);
+  const payload = await readJson<unknown>(response);
+  if (!isRunPayloadLike(payload)) {
+    throw new Error(`Run ${runId} returned an invalid payload.`);
+  }
+  return payload;
 }
 
 export async function fetchSegmentMedia(

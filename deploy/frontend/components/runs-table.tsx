@@ -145,7 +145,7 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
             <tbody>
               {filteredRows.map((row) => (
                 <tr key={row.run_id}>
-                  <td>
+                  <td data-label="Name">
                     <div className="run-list-cell">
                       <div className="run-list-title-row">
                         <p className="run-list-name">{row.display_name}</p>
@@ -153,20 +153,20 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                       </div>
                     </div>
                   </td>
-                  <td>{formatDateTime(row.created_at)}</td>
-                  <td title={row.models.join(", ")}>
+                  <td data-label="Date">{formatDateTime(row.created_at)}</td>
+                  <td data-label="Models" title={row.models.join(", ")}>
                     {row.models.length} {row.models.length === 1 ? "model" : "models"}
                   </td>
-                  <td title={row.video_names.join(", ")}>
+                  <td data-label="Videos" title={row.video_names.join(", ")}>
                     {row.video_names.length} {row.video_names.length === 1 ? "video" : "videos"}
                   </td>
-                  <td>
+                  <td data-label="Quick Stats">
                     <div className="quick-stat-cell">
                       <strong>{formatPercent(row.best_agreement)}</strong>
                       <span>{row.best_model_name ?? "Not enough data"}</span>
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Actions">
                     <div className="inline-links">
                       <Link
                         href={buildHref(`/report/${row.run_id}`, {

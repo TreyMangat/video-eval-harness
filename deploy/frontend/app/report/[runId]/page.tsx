@@ -75,7 +75,8 @@ function accuracyMetricForModel(
 }
 
 function resolveAccuracyEntry(run: RunPayload, modelName: string): AccuracyEntry {
-  const summary = run.summaries[modelName];
+  const summaries = run.summaries && typeof run.summaries === "object" ? run.summaries : {};
+  const summary = summaries[modelName];
   const rawAccuracy = accuracyMetricForModel(run.accuracy_by_model, modelName);
   const rawLlmAccuracy = accuracyMetricForModel(run.llm_accuracy, modelName);
 
@@ -155,7 +156,8 @@ function resolveAccuracyEntry(run: RunPayload, modelName: string): AccuracyEntry
 }
 
 function buildAccuracyEntries(run: RunPayload): AccuracyEntry[] {
-  return [...run.models]
+  const models = Array.isArray(run.models) ? run.models : [];
+  return [...models]
     .map((modelName) => resolveAccuracyEntry(run, modelName))
     .sort((left, right) => {
       const leftScore = left.score ?? Number.NEGATIVE_INFINITY;
@@ -404,9 +406,14 @@ export default async function RunReportPage({
   }
 
   const sweepData = getSweepData(run);
+  const models = Array.isArray(run.models) ? run.models : [];
+  const segments = Array.isArray(run.segments) ? run.segments : [];
+  const results = Array.isArray(run.results) ? run.results : [];
+  const agreement = run.agreement && typeof run.agreement === "object" ? run.agreement : {};
+  const groundTruth = Array.isArray(run.ground_truth) ? run.ground_truth : null;
   const rows = buildCoreComparisonRows(run, sweepData);
   const comparisonWinner = bestOverallModel(rows);
-  const comparisonBestValue = bestValueModel(rows, run.segments.length || 1);
+  const comparisonBestValue = bestValueModel(rows, segments.length || 1);
   const fastest = fastestModel(rows);
   const featuredVariant = selectFeaturedVariant(sweepData);
   const samples = selectSampleSegments(run, featuredVariant, 3);
@@ -414,12 +421,12 @@ export default async function RunReportPage({
   const reportName = run.config.display_name?.trim() || runLabel;
   const runType = getRunType(run);
   const parseSuccessMatrix = sweepData
-    ? buildParseSuccessMatrix(sweepData, run.models, sweepData.variants)
+    ? buildParseSuccessMatrix(sweepData, models, sweepData.variants)
     : null;
   const accuracyEntries = buildAccuracyEntries(run);
   const bestAccuracy = bestAccuracyEntry(accuracyEntries);
   const bestAccuracyValue = bestAccuracyValueEntry(accuracyEntries);
-  const hasGroundTruth = Boolean(run.ground_truth?.length);
+  const hasGroundTruth = Boolean(groundTruth?.length);
   const hasAccuracyMetrics = accuracyEntries.some((entry) => entry.score != null);
   const isAccuracyReport = runType === "accuracy_test" || hasGroundTruth || hasAccuracyMetrics;
 
@@ -433,7 +440,7 @@ export default async function RunReportPage({
         <p className="section-eyebrow">Printable Summary</p>
         <h1 className="report-verdict">
           {isAccuracyReport
-            ? accuracyVerdictSentence(reportName, bestAccuracy, run.models.length, hasGroundTruth)
+            ? accuracyVerdictSentence(reportName, bestAccuracy, models.length, hasGroundTruth)
             : verdictSentence(runLabel, comparisonWinner, rows, sweepData)}
         </h1>
         <div className="report-subhead-row">
@@ -517,7 +524,7 @@ export default async function RunReportPage({
                   comparisonBestValue.total_cost === 0
                     ? "\u221e"
                     : comparisonBestValue.total_cost && comparisonBestValue.total_cost > 0
-                      ? `${((comparisonBestValue.agreement ?? 0) / (comparisonBestValue.total_cost / Math.max(run.segments.length, 1))).toFixed(1)}x`
+                      ? `${((comparisonBestValue.agreement ?? 0) / (comparisonBestValue.total_cost / Math.max(segments.length, 1))).toFixed(1)}x`
                       : "\u2014"
                 }
                 secondary={`${formatMoney(comparisonBestValue.total_cost)} total \u00b7 ${formatPercent(comparisonBestValue.agreement)} agreement`}
@@ -583,22 +590,22 @@ export default async function RunReportPage({
                     <tr>
                       <th>Segment</th>
                       <th>Your label</th>
-                      {run.models.map((modelName) => (
+                      {models.map((modelName) => (
                         <th key={modelName}>{modelName}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {run.segments.map((segment) => {
-                      const groundTruthLabel = getGroundTruthLabel(segment, run.ground_truth);
+                    {segments.map((segment) => {
+                      const groundTruthLabel = getGroundTruthLabel(segment, groundTruth);
                       return (
                         <tr key={segment.segment_id}>
                           <td className="seg-time">
                             {formatTime(segment.start_time_s)} - {formatTime(segment.end_time_s)}
                           </td>
                           <td className="gt-label">{groundTruthLabel ?? "\u2014"}</td>
-                          {run.models.map((modelName) => {
-                            const result = getModelResult(segment, modelName, run.results);
+                          {models.map((modelName) => {
+                            const result = getModelResult(segment, modelName, results);
                             const { isMatch } = isLikelyAccuracyMatch(groundTruthLabel, result);
                             return (
                               <td
@@ -638,7 +645,7 @@ export default async function RunReportPage({
             ? "Even when models miss the ground truth, they may still agree with each other. That is consensus without correctness."
             : "This is the one visual to carry into a discussion: it shows how tightly the models cluster."
         }
-        matrix={run.agreement}
+        matrix={agreement}
       />
 
       <SegmentComparisonSamplesCard
@@ -672,8 +679,8 @@ export default async function RunReportPage({
           createdAt={run.config.created_at}
           videoLabel={getRunVideoLabel(run)}
           promptVersion={run.config.prompt_version}
-          models={run.models}
-          segments={run.segments.length}
+          models={models}
+          segments={segments.length}
           compact
           compactText={runBreadcrumb(run)}
         />
@@ -682,7 +689,7 @@ export default async function RunReportPage({
           <VariantHeatmapCard
             title="Model x Variant Parse Success"
             description="Parse success heatmap from the run's exported sweep summary."
-            models={run.models}
+            models={models}
             variants={sweepData.variants}
             matrix={parseSuccessMatrix}
           />
