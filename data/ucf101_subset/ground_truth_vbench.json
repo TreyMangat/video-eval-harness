@@ -1,0 +1,74 @@
+[
+  {
+    "video_id": "v_ApplyEyeMakeup_g01_c01",
+    "segment_id": "",
+    "primary_action": "applying eye makeup",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_Basketball_g01_c01",
+    "segment_id": "",
+    "primary_action": "playing basketball",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_CuttingInKitchen_g01_c01",
+    "segment_id": "",
+    "primary_action": "cutting in kitchen",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_CuttingInKitchen_g01_c02",
+    "segment_id": "",
+    "primary_action": "cutting in kitchen",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_Drumming_g01_c01",
+    "segment_id": "",
+    "primary_action": "playing drums",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_JumpingJack_g01_c01",
+    "segment_id": "",
+    "primary_action": "doing jumping jacks",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_PlayingGuitar_g01_c01",
+    "segment_id": "",
+    "primary_action": "playing guitar",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_PushUps_g01_c01",
+    "segment_id": "",
+    "primary_action": "doing push-ups",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_SoccerJuggling_g01_c01",
+    "segment_id": "",
+    "primary_action": "juggling soccer ball",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_TaiChi_g01_c01",
+    "segment_id": "",
+    "primary_action": "performing tai chi",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_WritingOnBoard_g01_c01",
+    "segment_id": "",
+    "primary_action": "writing on board",
+    "source": "ucf101_codex"
+  },
+  {
+    "video_id": "v_WritingOnBoard_g01_c02",
+    "segment_id": "",
+    "primary_action": "writing on board",
+    "source": "ucf101_codex"
+  }
+]
