@@ -17,7 +17,7 @@ export function TopNav({
   active,
   runSelector,
 }: {
-  active: "dashboard" | "runs" | "compare" | "new";
+  active: "dashboard" | "runs" | "compare" | "accuracy" | "new";
   runSelector?: RunSelectorConfig;
 }) {
   const router = useRouter();
@@ -56,6 +56,12 @@ export function TopNav({
           </Link>
           <Link href="/compare" className={`mode-btn ${active === "compare" ? "active" : ""}`}>
             Compare
+          </Link>
+          <Link
+            href="/accuracy-test"
+            className={`mode-btn ${active === "accuracy" ? "active" : ""}`}
+          >
+            Accuracy Test
           </Link>
           <Link href="/new" className={`mode-btn ${active === "new" ? "active" : ""}`}>
             New Benchmark

@@ -14,10 +14,10 @@ export default function NewBenchmarkPage() {
       <section className="visual-card new-benchmark-hero dashboard-section-card">
         <div className="section-heading">
           <p className="section-eyebrow">New Benchmark</p>
-          <h1 className="run-title">Upload a clip and launch a fresh run.</h1>
+          <h1 className="run-title">Upload a clip and compare models.</h1>
           <p className="chart-desc">
-            Mix fast and frontier models, preview the estimated spend live, and we&apos;ll route
-            you to the report as soon as the benchmark finishes.
+            This comparison mode runs multiple models on the same clip, previews the estimated
+            spend live, and routes you to the report as soon as the benchmark finishes.
           </p>
         </div>
         <div className="analysis-actions">

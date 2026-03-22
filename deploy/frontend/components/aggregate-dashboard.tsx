@@ -43,6 +43,8 @@ type AggregateAgreementVerdict = {
   weakestPairScore: number;
 };
 
+type AggregateSourceRow = ReturnType<typeof buildCoreComparisonRows>[number];
+
 function average(values: number[]): number | null {
   if (values.length === 0) {
     return null;
@@ -258,19 +260,45 @@ function bestValueRow(rows: AggregateModelRow[]): AggregateModelRow | null {
     })[0] ?? null;
 }
 
+function isValidAggregateModelRow(row: AggregateSourceRow): boolean {
+  return row.parse_rate == null || row.parse_rate > 0;
+}
+
+function aggregateRowsForRun(run: RunPayload): AggregateSourceRow[] {
+  return buildCoreComparisonRows(run, getSweepData(run)).filter(isValidAggregateModelRow);
+}
+
+function hasSegmentData(run: RunPayload): boolean {
+  return run.results.length > 0 || run.segments.length > 0;
+}
+
+function isQualityAggregateRun(run: RunPayload): boolean {
+  const summaryModelCount = Object.keys(run.summaries ?? {}).length;
+  if (summaryModelCount < 2 || !hasSegmentData(run)) {
+    return false;
+  }
+
+  return aggregateRowsForRun(run).length >= 2;
+}
+
+function runHasAccuracyData(run: RunPayload): boolean {
+  return aggregateRowsForRun(run).some((row) => row.llm_accuracy != null || row.accuracy != null);
+}
+
 export function computeAggregateStats(runs: RunPayload[]): AggregateStats {
   const videoIds = new Set<string>();
   const models = new Set<string>();
   let totalCost = 0;
 
   for (const run of runs) {
+    const rows = aggregateRowsForRun(run);
     for (const videoId of run.config.video_ids) {
       videoIds.add(videoId);
     }
-    for (const modelName of run.models) {
-      models.add(modelName);
+    for (const row of rows) {
+      models.add(row.model_name);
     }
-    totalCost += run.results.reduce((sum, result) => sum + (result.estimated_cost ?? 0), 0);
+    totalCost += rows.reduce((sum, row) => sum + (row.total_cost ?? 0), 0);
   }
 
   return {
@@ -297,7 +325,7 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
   >();
 
   for (const run of runs) {
-    const rows = buildCoreComparisonRows(run, getSweepData(run));
+    const rows = aggregateRowsForRun(run);
     for (const row of rows) {
       const current = byModel.get(row.model_name) ?? {
         agreement: [],
@@ -356,13 +384,21 @@ export function computeAggregateAgreementMatrix(
   const pairCounts = new Map<string, number>();
 
   for (const run of runs) {
-    for (const modelName of run.models) {
+    const validModels = new Set(aggregateRowsForRun(run).map((row) => row.model_name));
+
+    for (const modelName of validModels) {
       models.add(modelName);
     }
 
     for (const [rowModel, row] of Object.entries(run.agreement)) {
+      if (!validModels.has(rowModel)) {
+        continue;
+      }
       models.add(rowModel);
       for (const [columnModel, score] of Object.entries(row)) {
+        if (!validModels.has(columnModel)) {
+          continue;
+        }
         models.add(columnModel);
         if (rowModel === columnModel) {
           continue;
@@ -394,11 +430,7 @@ export function computeAggregateAgreementMatrix(
 }
 
 function countAccuracyRuns(runs: RunPayload[]): number {
-  return runs.filter((run) =>
-    buildCoreComparisonRows(run, getSweepData(run)).some(
-      (row) => row.llm_accuracy != null || row.accuracy != null
-    )
-  ).length;
+  return runs.filter(runHasAccuracyData).length;
 }
 
 function computeAgreementVerdict(
@@ -437,14 +469,6 @@ function computeAgreementVerdict(
     weakestPair: weakest.pair,
     weakestPairScore: weakest.score,
   };
-}
-
-function indexedVideoCount(runList: RunListItem[]): number {
-  return new Set(runList.flatMap((run) => run.video_ids)).size;
-}
-
-function indexedModels(runList: RunListItem[]): string[] {
-  return [...new Set(runList.flatMap((run) => run.models))].sort();
 }
 
 export function medalClass(index: number): string {
@@ -549,20 +573,22 @@ export function AggregateDashboard({
 }) {
   const recentRuns = runList.slice(0, 10);
   const runPayloadById = new Map(runs.map((run) => [run.run_id, run]));
-  const aggregateStats = computeAggregateStats(runs);
-  const leaderboard = computeAggregateLeaderboard(runs);
-  const bestAccuracy = bestAccuracyRow(leaderboard);
+  const qualityRuns = runs.filter(isQualityAggregateRun);
+  const accuracyRuns = qualityRuns.filter(runHasAccuracyData);
+  const aggregateStats = computeAggregateStats(qualityRuns);
+  const leaderboard = computeAggregateLeaderboard(qualityRuns);
+  const accuracyLeaderboard = computeAggregateLeaderboard(accuracyRuns);
+  const bestAccuracy = bestAccuracyRow(accuracyLeaderboard);
   const bestAgreement = bestAgreementRow(leaderboard);
   const fastestModel = bestLatencyRow(leaderboard);
   const bestValue = bestValueRow(leaderboard);
   const hasExactAccuracy = leaderboard.some((row) => row.avg_accuracy != null);
   const hasLlmAccuracy = leaderboard.some((row) => row.avg_llm_accuracy != null);
-  const aggregateAgreementMatrix = computeAggregateAgreementMatrix(runs);
+  const aggregateAgreementMatrix = computeAggregateAgreementMatrix(qualityRuns);
   const agreementVerdict = computeAgreementVerdict(aggregateAgreementMatrix);
-  const accuracyRunCount = countAccuracyRuns(runs);
+  const accuracyRunCount = countAccuracyRuns(qualityRuns);
+  const filteredRunCount = Math.max(runs.length - qualityRuns.length, 0);
   const totalRuns = runList.length;
-  const totalVideos = indexedVideoCount(runList);
-  const allModels = indexedModels(runList);
   const allRunsLoaded = totalRuns === 0 || loadedRunCount >= totalRuns;
   const loadMoreHref =
     nextLoadCount && nextLoadCount > loadedRunCount
@@ -617,9 +643,10 @@ export function AggregateDashboard({
               )}
             </p>
             <p className="chart-desc">
-              Aggregate cards and charts use the loaded run payloads from the merged history
-              (committed static exports plus live Modal runs). The Recent Runs strip uses the
-              broader merged run index.
+              Aggregate cards and charts use {aggregateStats.total_runs} quality runs from the
+              loaded merged history (committed static exports plus live Modal runs). Single-model
+              runs, empty runs, and models with 0% parse success are filtered out. The Recent Runs
+              strip uses the broader merged run index.
             </p>
           </div>
         </section>
@@ -668,8 +695,10 @@ export function AggregateDashboard({
         </section>
 
         <p className="meta-line">
-          {totalRuns} runs · {totalVideos} videos · ${aggregateStats.total_cost.toFixed(2)} API
-          cost · {allModels.length} models tested
+          {aggregateStats.total_runs} quality runs · {aggregateStats.total_videos} videos · $
+          {aggregateStats.total_cost.toFixed(2)} API cost · {aggregateStats.models_tested.length}{" "}
+          models tested
+          {filteredRunCount > 0 ? ` · ${filteredRunCount} runs filtered from aggregation` : ""}
         </p>
 
         <AggregateVisualsClient rows={leaderboard} />

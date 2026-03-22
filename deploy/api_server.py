@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Optional, TypedDict
 
@@ -22,11 +23,13 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from video_eval_harness.storage import Storage
 from video_eval_harness.utils.ffmpeg import probe_video
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARTIFACTS_DIR = Path(os.environ.get("VBENCH_ARTIFACTS_DIR", str(ROOT / "artifacts")))
 DEFAULT_RUNS_DIR = "runs"
 DEFAULT_JOBS_DIR = "jobs"
+DEFAULT_PREVIEWS_DIR = "previews"
 UPLOADS_DIR = "uploads"
 PUBLIC_BENCHMARK_CONFIG = ROOT / "configs" / "benchmark_all_models_optimized.yaml"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
@@ -64,12 +67,13 @@ JobRunner = Callable[
         list[str],
         Optional[str],
         set[str],
+        Optional[Path],
         Optional[ArtifactSync],
         Optional[JobStateSaver],
     ],
     None,
 ]
-JobSubmitter = Callable[[Path, str, Path, list[str], Optional[str], set[str]], None]
+JobSubmitter = Callable[[Path, str, Path, list[str], Optional[str], set[str], Optional[Path]], None]
 
 PUBLIC_MODEL_CATALOG: list[dict[str, Any]] = [
     {
@@ -293,21 +297,14 @@ def create_app(
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             raise HTTPException(status_code=500, detail="Unable to load segment media.") from exc
 
-    @app.post("/api/benchmark")
-    async def start_benchmark(
-        background_tasks: BackgroundTasks,
+    @app.post("/api/segment-preview")
+    async def segment_preview(
         video: Optional[UploadFile] = File(None),
         uploaded_file: Optional[UploadFile] = File(None, alias="file"),
-        models: Optional[str] = Form(None),
-        name: Optional[str] = Form(None),
     ) -> dict[str, Any]:
         upload = video or uploaded_file
         if upload is None:
             raise HTTPException(status_code=422, detail="A video file is required.")
-
-        requested_models = _parse_requested_models(models)
-        if not requested_models:
-            requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
 
         upload_name = Path(upload.filename or "upload.mp4").name
         if Path(upload_name).suffix.lower() not in ALLOWED_SUFFIXES:
@@ -316,10 +313,11 @@ def create_app(
                 detail=f"Unsupported file type for '{upload_name}'.",
             )
 
-        uploads_root = Path(app.state.artifacts_dir) / UPLOADS_DIR
-        uploads_root.mkdir(parents=True, exist_ok=True)
-        upload_dir = Path(tempfile.mkdtemp(prefix="public_benchmark_", dir=uploads_root))
-        upload_path = upload_dir / upload_name
+        artifacts_path = Path(app.state.artifacts_dir)
+        preview_id = str(uuid.uuid4())
+        preview_dir = _previews_dir(artifacts_path) / preview_id
+        preview_dir.mkdir(parents=True, exist_ok=True)
+        upload_path = preview_dir / upload_name
 
         try:
             file_size_bytes = await _save_upload_file(
@@ -328,15 +326,117 @@ def create_app(
                 int(API_PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024,
             )
             video_info = probe_video(upload_path)
+            is_valid, error_message = validate_api_public_request(
+                file_size_bytes=file_size_bytes,
+                duration_s=video_info.duration_s,
+                requested_models=[],
+            )
+            if not is_valid:
+                raise HTTPException(status_code=422, detail=error_message or "Upload rejected.")
+
+            response_payload, preview_state = _build_segment_preview_payload(
+                upload_path,
+                upload_name,
+                file_size_bytes,
+                video_info,
+                preview_dir,
+            )
+            preview_state["preview_id"] = preview_id
+            _preview_state_path(artifacts_path, preview_id).write_text(
+                json.dumps(preview_state),
+                encoding="utf-8",
+            )
+            response_payload["preview_id"] = preview_id
+            app.state.sync_artifacts()
+            return response_payload
         except HTTPException:
-            shutil.rmtree(upload_dir, ignore_errors=True)
+            shutil.rmtree(preview_dir, ignore_errors=True)
             raise
-        except Exception as exc:
-            shutil.rmtree(upload_dir, ignore_errors=True)
+        except subprocess.CalledProcessError as exc:
+            shutil.rmtree(preview_dir, ignore_errors=True)
+            stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
             raise HTTPException(
-                status_code=422,
-                detail=f"Unable to read uploaded video: {exc}",
+                status_code=500,
+                detail=stderr or "Unable to extract preview keyframes.",
             ) from exc
+        except Exception as exc:
+            shutil.rmtree(preview_dir, ignore_errors=True)
+            raise HTTPException(status_code=500, detail=f"Segmentation failed: {exc}") from exc
+
+    @app.post("/api/benchmark")
+    async def start_benchmark(
+        background_tasks: BackgroundTasks,
+        video: Optional[UploadFile] = File(None),
+        uploaded_file: Optional[UploadFile] = File(None, alias="file"),
+        models: Optional[str] = Form(None),
+        name: Optional[str] = Form(None),
+        ground_truth: Optional[str] = Form(None),
+        preview_id: Optional[str] = Form(None),
+    ) -> dict[str, Any]:
+        upload = video or uploaded_file
+        requested_models = _parse_requested_models(models)
+        if not requested_models:
+            requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
+
+        artifacts_path = Path(app.state.artifacts_dir)
+        preview_state = (
+            _load_preview_state(artifacts_path, preview_id)
+            if preview_id is not None and preview_id.strip()
+            else None
+        )
+        if preview_id and preview_state is None and upload is None:
+            raise HTTPException(status_code=404, detail="Preview not found. Please re-upload.")
+        if upload is None and preview_state is None:
+            raise HTTPException(status_code=422, detail="Provide a video file or preview_id.")
+
+        uploads_root = artifacts_path / UPLOADS_DIR
+        uploads_root.mkdir(parents=True, exist_ok=True)
+        upload_dir = Path(tempfile.mkdtemp(prefix="public_benchmark_", dir=uploads_root))
+        ground_truth_path: Optional[Path] = None
+
+        if upload is not None:
+            upload_name = Path(upload.filename or "upload.mp4").name
+            if Path(upload_name).suffix.lower() not in ALLOWED_SUFFIXES:
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unsupported file type for '{upload_name}'.",
+                )
+            upload_path = upload_dir / upload_name
+
+            try:
+                file_size_bytes = await _save_upload_file(
+                    upload,
+                    upload_path,
+                    int(API_PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024,
+                )
+                video_info = probe_video(upload_path)
+            except HTTPException:
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise
+            except Exception as exc:
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unable to read uploaded video: {exc}",
+                ) from exc
+        else:
+            assert preview_state is not None
+            source_path = Path(str(preview_state.get("video_path") or ""))
+            if not source_path.exists():
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise HTTPException(status_code=404, detail="Preview video not found. Please re-upload.")
+            upload_path = upload_dir / source_path.name
+            shutil.copy2(source_path, upload_path)
+            file_size_bytes = upload_path.stat().st_size
+            try:
+                video_info = probe_video(upload_path)
+            except Exception as exc:
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unable to read preview video: {exc}",
+                ) from exc
 
         is_valid, error_message = validate_api_public_request(
             file_size_bytes=file_size_bytes,
@@ -347,9 +447,22 @@ def create_app(
             shutil.rmtree(upload_dir, ignore_errors=True)
             raise HTTPException(status_code=422, detail=error_message or "Upload rejected.")
 
+        try:
+            normalized_ground_truth = _normalize_ground_truth_payload(ground_truth, preview_state)
+        except HTTPException:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise
+
+        if normalized_ground_truth:
+            ground_truth_path = upload_dir / "ground_truth.json"
+            ground_truth_path.write_text(
+                json.dumps(normalized_ground_truth, indent=2),
+                encoding="utf-8",
+            )
+
         job_id = str(uuid.uuid4())
         _save_job(
-            Path(app.state.artifacts_dir),
+            artifacts_path,
             job_id,
             "queued",
             stage="queued",
@@ -360,22 +473,24 @@ def create_app(
         try:
             if app.state.job_submitter is not None:
                 app.state.job_submitter(
-                    Path(app.state.artifacts_dir),
+                    artifacts_path,
                     job_id,
                     upload_path,
                     requested_models,
                     _normalize_name(name),
-                    _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
+                    _existing_run_ids(_runs_dir(artifacts_path)),
+                    ground_truth_path,
                 )
             else:
                 background_tasks.add_task(
                     app.state.job_runner,
-                    Path(app.state.artifacts_dir),
+                    artifacts_path,
                     job_id,
                     upload_path,
                     requested_models,
                     _normalize_name(name),
-                    _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
+                    _existing_run_ids(_runs_dir(artifacts_path)),
+                    ground_truth_path,
                     app.state.sync_artifacts,
                     app.state.job_state_saver,
                 )
@@ -485,6 +600,271 @@ def _jobs_dir(artifacts_dir: Path) -> Path:
     jobs_dir = artifacts_dir / DEFAULT_JOBS_DIR
     jobs_dir.mkdir(parents=True, exist_ok=True)
     return jobs_dir
+
+
+def _previews_dir(artifacts_dir: Path) -> Path:
+    previews_dir = artifacts_dir / DEFAULT_PREVIEWS_DIR
+    previews_dir.mkdir(parents=True, exist_ok=True)
+    return previews_dir
+
+
+@lru_cache(maxsize=1)
+def _public_preview_settings() -> dict[str, float]:
+    config_payload = yaml.safe_load(PUBLIC_BENCHMARK_CONFIG.read_text(encoding="utf-8")) or {}
+    segmentation = (
+        config_payload.get("segmentation")
+        if isinstance(config_payload, dict) and isinstance(config_payload.get("segmentation"), dict)
+        else {}
+    )
+    window_size_s = float(segmentation.get("window_size_s") or 10.0)
+    stride_value = segmentation.get("stride_s")
+    stride_s = float(stride_value) if isinstance(stride_value, (int, float)) else window_size_s
+    min_segment_s = float(segmentation.get("min_segment_s") or 2.0)
+    return {
+        "window_size_s": window_size_s,
+        "stride_s": stride_s,
+        "min_segment_s": min_segment_s,
+    }
+
+
+def _preview_state_path(artifacts_dir: Path, preview_id: str) -> Path:
+    return _previews_dir(artifacts_dir) / preview_id / "preview.json"
+
+
+def _load_preview_state(artifacts_dir: Path, preview_id: str) -> Optional[dict[str, Any]]:
+    path = _preview_state_path(artifacts_dir, preview_id)
+    if not path.exists():
+        return None
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def _subsample_preview_segments(segments: list[Any], max_segments: int) -> list[Any]:
+    if max_segments <= 0 or len(segments) <= max_segments:
+        return segments
+
+    step = len(segments) / max_segments
+    indices = [int(index * step) for index in range(max_segments)]
+    return [segments[index] for index in indices]
+
+
+def _extract_preview_keyframe(
+    video_path: Path,
+    start_time_s: float,
+    end_time_s: float,
+    destination: Path,
+) -> str:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    segment_duration = max(end_time_s - start_time_s, 0.1)
+    midpoint_s = start_time_s + (segment_duration / 2)
+    if end_time_s > start_time_s:
+        midpoint_s = min(midpoint_s, max(start_time_s, end_time_s - 0.05))
+    midpoint_s = max(0.0, midpoint_s)
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-ss",
+            f"{midpoint_s:.3f}",
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "4",
+            str(destination),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    return base64.b64encode(destination.read_bytes()).decode("utf-8")
+
+
+def _build_segment_preview_payload(
+    upload_path: Path,
+    upload_name: str,
+    file_size_bytes: int,
+    video_info: Any,
+    preview_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    from video_eval_harness.config import SegmentationConfig
+    from video_eval_harness.schemas import VideoMetadata
+    from video_eval_harness.segmentation import FixedWindowSegmenter
+    from video_eval_harness.utils.ids import generate_video_id
+
+    preview_settings = _public_preview_settings()
+    video_id = generate_video_id(upload_path)
+    segmenter = FixedWindowSegmenter(
+        SegmentationConfig(
+            window_size_s=preview_settings["window_size_s"],
+            stride_s=preview_settings["stride_s"],
+            min_segment_s=preview_settings["min_segment_s"],
+        )
+    )
+    video_meta = VideoMetadata(
+        video_id=video_id,
+        source_path=str(upload_path),
+        filename=upload_name,
+        duration_s=video_info.duration_s,
+        width=video_info.width,
+        height=video_info.height,
+        fps=video_info.fps,
+        codec=video_info.codec,
+        file_size_bytes=file_size_bytes,
+    )
+    segments = _subsample_preview_segments(
+        segmenter.segment(video_meta),
+        int(API_PUBLIC_LIMITS.get("max_segments", 6)),
+    )
+
+    segment_payloads: list[dict[str, Any]] = []
+    preview_state_segments: list[dict[str, Any]] = []
+    for segment in segments:
+        frame_path = preview_dir / "frames" / f"{segment.segment_index:04d}.jpg"
+        keyframe_base64 = _extract_preview_keyframe(
+            upload_path,
+            segment.start_time_s,
+            segment.end_time_s,
+            frame_path,
+        )
+        segment_payload = {
+            "segment_index": int(segment.segment_index),
+            "segment_id": str(segment.segment_id),
+            "start_s": float(segment.start_time_s),
+            "end_s": float(segment.end_time_s),
+            "keyframe_base64": keyframe_base64,
+        }
+        segment_payloads.append(segment_payload)
+        preview_state_segments.append(
+            {
+                "segment_index": int(segment.segment_index),
+                "segment_id": str(segment.segment_id),
+                "start_s": float(segment.start_time_s),
+                "end_s": float(segment.end_time_s),
+            }
+        )
+
+    response_payload = {
+        "video_id": video_id,
+        "video_filename": upload_name,
+        "duration_s": float(video_info.duration_s),
+        "segment_count": len(segment_payloads),
+        "segments": segment_payloads,
+    }
+    state_payload = {
+        "video_id": video_id,
+        "video_filename": upload_name,
+        "video_path": str(upload_path),
+        "duration_s": float(video_info.duration_s),
+        "segment_count": len(preview_state_segments),
+        "segments": preview_state_segments,
+    }
+    return response_payload, state_payload
+
+
+def _normalize_ground_truth_payload(
+    raw_ground_truth: Optional[str],
+    preview_state: Optional[dict[str, Any]] = None,
+) -> Optional[list[dict[str, Any]]]:
+    if raw_ground_truth is None or not raw_ground_truth.strip():
+        return None
+
+    try:
+        payload = json.loads(raw_ground_truth)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="ground_truth must be valid JSON.") from exc
+
+    if not isinstance(payload, list):
+        raise HTTPException(status_code=422, detail="ground_truth must be a JSON array.")
+
+    normalized: list[dict[str, Any]] = []
+    preview_segments = (
+        preview_state.get("segments")
+        if preview_state is not None and isinstance(preview_state.get("segments"), list)
+        else []
+    )
+    preview_by_index = {
+        int(segment.get("segment_index")): segment
+        for segment in preview_segments
+        if isinstance(segment, dict) and isinstance(segment.get("segment_index"), int)
+    }
+    preview_video_id = (
+        str(preview_state.get("video_id"))
+        if preview_state is not None and preview_state.get("video_id")
+        else ""
+    )
+
+    for index, entry in enumerate(payload):
+        if not isinstance(entry, dict):
+            raise HTTPException(
+                status_code=422,
+                detail=f"ground_truth entry {index + 1} must be an object.",
+            )
+
+        if "segment_id" in entry and "primary_action" in entry:
+            primary_action = str(entry.get("primary_action") or "").strip()
+            if not primary_action:
+                continue
+            normalized.append(
+                {
+                    "video_id": str(entry.get("video_id") or preview_video_id),
+                    "segment_id": str(entry["segment_id"]),
+                    "start_time_s": float(entry.get("start_time_s") or 0.0),
+                    "end_time_s": float(entry.get("end_time_s") or 0.0),
+                    "primary_action": primary_action,
+                    "secondary_actions": entry.get("secondary_actions") or [],
+                    "description": entry.get("description"),
+                    "source": entry.get("source") or "accuracy_test_upload",
+                }
+            )
+            continue
+
+        if preview_state is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "ground_truth labels without segment IDs require a preview_id from /api/segment-preview."
+                ),
+            )
+
+        raw_segment_index = entry.get("segment_index")
+        if not isinstance(raw_segment_index, int):
+            raise HTTPException(
+                status_code=422,
+                detail=f"ground_truth entry {index + 1} is missing an integer segment_index.",
+            )
+        label_value = str(entry.get("label") or entry.get("primary_action") or "").strip()
+        if not label_value:
+            continue
+
+        preview_segment = preview_by_index.get(raw_segment_index)
+        if preview_segment is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"ground_truth entry {index + 1} references unknown segment {raw_segment_index}.",
+            )
+
+        normalized.append(
+            {
+                "video_id": preview_video_id,
+                "segment_id": str(preview_segment.get("segment_id") or ""),
+                "start_time_s": float(preview_segment.get("start_s") or 0.0),
+                "end_time_s": float(preview_segment.get("end_s") or 0.0),
+                "primary_action": label_value,
+                "secondary_actions": [],
+                "description": None,
+                "source": "accuracy_test_upload",
+            }
+        )
+
+    return normalized or None
 
 
 def _save_job(
@@ -656,6 +1036,7 @@ def _run_benchmark_job(
     requested_models: list[str],
     name: Optional[str],
     before_runs: set[str],
+    ground_truth_path: Optional[Path] = None,
     sync_artifacts: Optional[ArtifactSync] = None,
     persist_job_state: Optional[JobStateSaver] = None,
 ) -> None:
@@ -701,6 +1082,8 @@ def _run_benchmark_job(
         ]
         if name:
             command.extend(["--name", name])
+        if ground_truth_path is not None:
+            command.extend(["--ground-truth", str(ground_truth_path)])
 
         env = os.environ.copy()
         env["PYTHONPATH"] = _augment_pythonpath(ROOT / "src", env.get("PYTHONPATH"))
@@ -783,6 +1166,13 @@ def _run_benchmark_job(
                 persist_job_state=persist_job_state,
             )
             return
+
+        if ground_truth_path is not None:
+            run_dir = _runs_dir(artifacts_dir) / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ground_truth_path, run_dir / "ground_truth.json")
+            if sync_artifacts is not None:
+                sync_artifacts()
 
         _save_job(
             artifacts_dir,
