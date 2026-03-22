@@ -1,0 +1,122 @@
+[
+  {
+    "video_id": "vid_P08_05_take_001_c4a8bec1d4a5",
+    "segment_id": "",
+    "primary_action": "taking spoon",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_take_002_f4dc0a7b58cc",
+    "segment_id": "",
+    "primary_action": "taking towel",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_put_001_5f3fd67227f7",
+    "segment_id": "",
+    "primary_action": "putting scissors away",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_put_002_8b995240e9c6",
+    "segment_id": "",
+    "primary_action": "putting salt",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_open_001_44bef8af70e1",
+    "segment_id": "",
+    "primary_action": "opening dishwasher",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_open_002_9a62613970d0",
+    "segment_id": "",
+    "primary_action": "opening drawer",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_close_001_649493a94cb8",
+    "segment_id": "",
+    "primary_action": "closing water tap",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_close_002_5ca9aa6ff87c",
+    "segment_id": "",
+    "primary_action": "closing trash can",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_wash_001_17ee0da2a0a3",
+    "segment_id": "",
+    "primary_action": "washing hands",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_wash_002_5d1f6f4da5d9",
+    "segment_id": "",
+    "primary_action": "washing sponge",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_cut_001_3aa5a3be87d5",
+    "segment_id": "",
+    "primary_action": "cutting bell pepper",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_cut_002_2653f79a0448",
+    "segment_id": "",
+    "primary_action": "cutting courgette",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_mix_001_55a6cbcc1387",
+    "segment_id": "",
+    "primary_action": "mixing corn",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_mix_002_28b863c500c7",
+    "segment_id": "",
+    "primary_action": "mixing water",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_pour_001_cdca46303626",
+    "segment_id": "",
+    "primary_action": "pouring oil",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_pour_002_03cbb12d6319",
+    "segment_id": "",
+    "primary_action": "pouring water",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_turn-on_001_3685fc3a330c",
+    "segment_id": "",
+    "primary_action": "turning on tap",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_turn-on_002_b8b824e7c51b",
+    "segment_id": "",
+    "primary_action": "turning on tap",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P08_05_peel_001_56c242aa34aa",
+    "segment_id": "",
+    "primary_action": "peeling carrot",
+    "source": "epic_kitchens"
+  },
+  {
+    "video_id": "vid_P22_07_peel_002_db344dc32d10",
+    "segment_id": "",
+    "primary_action": "peeling onion",
+    "source": "epic_kitchens"
+  }
+]

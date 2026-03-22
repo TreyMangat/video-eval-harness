@@ -195,11 +195,59 @@ Output ONLY valid JSON matching this schema exactly. No markdown, no explanation
 """
 
 
+ACTION_LABEL_OPTIMIZED_TEMPLATE = """\
+You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment ({{ start_time }}s–{{ end_time }}s).
+
+Your job is to identify the single best **primary_action** for the whole segment.
+
+Important labeling rules:
+- Choose the **most appropriate high-level action** visible across the frames, not the most literal object-level description.
+- Prefer the action category that best matches the overall activity even if the visible object differs.
+- Use **simple, common verbs** and canonical action labels when possible.
+- Make **primary_action** a concise **gerund verb phrase**, lowercase, maximum 5 words, no articles.
+- Focus on the core action, not all visible details.
+
+Examples of correct style:
+- "cutting in kitchen"
+- "doing push-ups"
+- "juggling soccer ball"
+- "writing on board"
+
+Examples of what to avoid:
+- Too specific object mentions when a broader canonical action is better: "slicing onion" -> use "cutting in kitchen"
+- Overly literal descriptions when a standard action label exists: "performing pushups" -> use "doing push-ups"
+- Confusing similar actions by object motion alone: "dribbling soccer ball" -> use "juggling soccer ball"
+- Adding unnecessary object detail in the action label: "writing on whiteboard" -> use "writing on board"
+
+Output rules:
+- primary_action MUST be a concise gerund verb phrase, maximum 5 words, lowercase, no articles.
+- Use a canonical action label when the video clearly matches one.
+- If the action is object-specific in common usage, prefer the standard label over a literal surface description.
+- Put ALL narrative detail in the "description" field, not primary_action.
+- secondary_actions: short verb phrases only, same rules as primary_action.
+- objects: nouns only, no descriptions.
+- confidence: your honest certainty from 0.0 to 1.0.
+
+Respond with ONLY a JSON object:
+{
+  "primary_action": "verb phrase, max 5 words",
+  "secondary_actions": ["other actions if any"],
+  "description": "detailed natural language description of what is happening",
+  "objects": ["notable objects visible"],
+  "environment_context": "brief setting description",
+  "confidence": 0.85,
+  "reasoning_summary_or_notes": "brief reasoning",
+  "uncertainty_flags": ["uncertain aspects if any"]
+}
+"""
+
+
 BUILTIN_TEMPLATES = {
     "concise": CONCISE_LABEL_TEMPLATE,
     "rich": RICH_LABEL_TEMPLATE,
     "action_label": ACTION_LABEL_TEMPLATE,
     "action_label_v2": ACTION_LABEL_V2_TEMPLATE,
+    "action_label_optimized": ACTION_LABEL_OPTIMIZED_TEMPLATE,
     "claude_action_label": CLAUDE_ACTION_LABEL_TEMPLATE,
     "strict_json": STRICT_JSON_TEMPLATE,
 }
