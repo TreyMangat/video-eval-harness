@@ -5,13 +5,13 @@ import {
   displayRunName,
   displayVideoName,
   formatDateTime,
-  formatLatency,
   formatMoney,
   formatPercent,
   getSweepData,
   modelColor,
 } from "../lib/analysis";
 import type { RunListItem, RunPayload } from "../lib/types";
+import { AggregateLeaderboardClient } from "./aggregate-leaderboard-client";
 import { AggregateVisualsClient } from "./aggregate-visuals-client";
 import { TopNav } from "./navigation";
 
@@ -70,44 +70,11 @@ function summarizeModelNames(models: string[]): string {
   return `${models[0]}, ${models[1]} +${models.length - 2} more`;
 }
 
-function formatConfidence(value: number | null): string {
-  if (value == null) {
-    return "-";
-  }
-  return value.toFixed(2);
-}
-
-function confidenceClass(value: number | null): string {
-  if (value == null) {
-    return "";
-  }
-  if (value >= 0.8) {
-    return "confidence-high";
-  }
-  if (value >= 0.5) {
-    return "confidence-mid";
-  }
-  return "confidence-low";
-}
-
-function accuracyClass(value: number | null): string {
-  if (value == null) {
-    return "aggregate-accuracy-chip neutral";
-  }
-  if (value >= 0.8) {
-    return "aggregate-accuracy-chip high";
-  }
-  if (value >= 0.6) {
-    return "aggregate-accuracy-chip mid";
-  }
-  return "aggregate-accuracy-chip low";
-}
-
 function preferredAccuracy(row: AggregateModelRow): number | null {
   return row.avg_llm_accuracy ?? row.avg_accuracy;
 }
 
-function signalIndicator(row: AggregateModelRow): { label: string; className: string } | null {
+export function signalIndicator(row: AggregateModelRow): { label: string; className: string } | null {
   const accuracy = preferredAccuracy(row);
   if (accuracy == null || row.avg_agreement == null) {
     return null;
@@ -136,17 +103,17 @@ function resolveAggregateInputMode(modes: Set<string>): string {
   return "frames";
 }
 
-function inputModeLabel(mode: string): string {
+export function inputModeLabel(mode: string): string {
   return mode === "video" ? "🎬 Video" : "🖼️ Frames";
 }
 
-function inputModeClass(mode: string): string {
+export function inputModeClass(mode: string): string {
   return mode === "video"
     ? "aggregate-input-mode video"
     : "aggregate-input-mode frames";
 }
 
-function scoreTone(value: number | null): "high" | "mid" | "low" | "none" {
+export function scoreTone(value: number | null): "high" | "mid" | "low" | "none" {
   if (value == null) {
     return "none";
   }
@@ -211,6 +178,46 @@ function sortAggregateRows(rows: AggregateModelRow[]): AggregateModelRow[] {
 
     return left.model_name.localeCompare(right.model_name);
   });
+}
+
+function bestAccuracyRow(rows: AggregateModelRow[]): AggregateModelRow | null {
+  return [...rows]
+    .filter((row) => preferredAccuracy(row) != null)
+    .sort((left, right) => {
+      const leftAccuracy = preferredAccuracy(left) ?? Number.NEGATIVE_INFINITY;
+      const rightAccuracy = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
+      if (leftAccuracy !== rightAccuracy) {
+        return rightAccuracy - leftAccuracy;
+      }
+
+      const leftAgreement = left.avg_agreement ?? Number.NEGATIVE_INFINITY;
+      const rightAgreement = right.avg_agreement ?? Number.NEGATIVE_INFINITY;
+      if (leftAgreement !== rightAgreement) {
+        return rightAgreement - leftAgreement;
+      }
+
+      return left.model_name.localeCompare(right.model_name);
+    })[0] ?? null;
+}
+
+function bestAgreementRow(rows: AggregateModelRow[]): AggregateModelRow | null {
+  return [...rows]
+    .filter((row) => row.avg_agreement != null)
+    .sort((left, right) => {
+      const leftAgreement = left.avg_agreement ?? Number.NEGATIVE_INFINITY;
+      const rightAgreement = right.avg_agreement ?? Number.NEGATIVE_INFINITY;
+      if (leftAgreement !== rightAgreement) {
+        return rightAgreement - leftAgreement;
+      }
+
+      const leftAccuracy = preferredAccuracy(left) ?? Number.NEGATIVE_INFINITY;
+      const rightAccuracy = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
+      if (leftAccuracy !== rightAccuracy) {
+        return rightAccuracy - leftAccuracy;
+      }
+
+      return left.model_name.localeCompare(right.model_name);
+    })[0] ?? null;
 }
 
 export function computeAggregateStats(runs: RunPayload[]): AggregateStats {
@@ -357,7 +364,7 @@ function indexedModels(runList: RunListItem[]): string[] {
   return [...new Set(runList.flatMap((run) => run.models))].sort();
 }
 
-function medalClass(index: number): string {
+export function medalClass(index: number): string {
   if (index === 0) {
     return "medal-gold";
   }
@@ -472,6 +479,8 @@ export function AggregateDashboard({
   const recentRuns = runList.slice(0, 10);
   const aggregateStats = computeAggregateStats(runs);
   const leaderboard = computeAggregateLeaderboard(runs);
+  const bestAccuracy = bestAccuracyRow(leaderboard);
+  const bestAgreement = bestAgreementRow(leaderboard);
   const hasExactAccuracy = leaderboard.some((row) => row.avg_accuracy != null);
   const hasLlmAccuracy = leaderboard.some((row) => row.avg_llm_accuracy != null);
   const aggregateAgreementMatrix = computeAggregateAgreementMatrix(runs);
@@ -547,6 +556,25 @@ export function AggregateDashboard({
           </div>
         </section>
 
+        {bestAccuracy && bestAgreement ? (
+          <section className="findings-callout">
+            <div className="findings-icon">⚡</div>
+            <div className="findings-content">
+              <h2>Key finding: agreement ≠ accuracy</h2>
+              <p>
+                Models that agree with each other aren&apos;t necessarily correct. On labeled
+                video data, <strong>{bestAccuracy.model_name}</strong> leads accuracy at{" "}
+                <strong>{formatPercent(preferredAccuracy(bestAccuracy))}</strong>, while{" "}
+                <strong>{bestAgreement.model_name}</strong> leads agreement at{" "}
+                <strong>{formatPercent(bestAgreement.avg_agreement)}</strong>.
+                {bestAccuracy.model_name !== bestAgreement.model_name
+                  ? " These are different models."
+                  : ""}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
         <section className="aggregate-stats-grid">
           <AggregateStatCard
             label="Total Runs Completed"
@@ -587,97 +615,20 @@ export function AggregateDashboard({
             <p className="section-eyebrow">Cross-Run Leaderboard</p>
             <h3>Which models stay strongest across the loaded run history?</h3>
             <p className="chart-desc">
-              The leaderboard now defaults to verified accuracy when it exists, while still making
-              agreement visible so overconfident and underrated models stand out immediately.
+              The leaderboard defaults to the strongest available accuracy signal when it exists,
+              while still making agreement visible so overconfident and underrated models stand
+              out immediately.
             </p>
           </div>
 
           {leaderboard.length === 0 ? (
             <p className="empty-state">No full run payloads were available to build the leaderboard.</p>
           ) : (
-            <div className="leaderboard-scroll">
-              <table className="leaderboard-table aggregate-leaderboard-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Model</th>
-                    <th>Input Mode</th>
-                    <th>Avg Agreement</th>
-                    {hasExactAccuracy ? <th>Avg Accuracy</th> : null}
-                    {hasLlmAccuracy ? <th>LLM Accuracy</th> : null}
-                    <th>Avg Confidence</th>
-                    <th>Avg Latency</th>
-                    <th>Total Cost</th>
-                    <th>Runs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((row, index) => {
-                    const medal = medalClass(index);
-                    const agreementTone = scoreTone(row.avg_agreement);
-                    const signal = signalIndicator(row);
-                    return (
-                      <tr
-                        key={row.model_name}
-                        className={`leaderboard-row aggregate-leaderboard-row ${index === 0 ? "top-ranked" : ""} ${medal}`}
-                        style={{ boxShadow: `inset 4px 0 0 ${modelColor(row.model_name)}` }}
-                      >
-                        <td className={`leaderboard-rank ${medal}`}>
-                          <span className={`leaderboard-rank-pill ${medal}`}>#{index + 1}</span>
-                        </td>
-                        <td>
-                          <div className="aggregate-model-cell">
-                            <strong>{row.model_name}</strong>
-                            <span>
-                              {row.run_count} {row.run_count === 1 ? "run" : "runs"} loaded
-                            </span>
-                            {signal ? (
-                              <span className={signal.className}>{signal.label}</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <span className={inputModeClass(row.input_mode)}>
-                            {inputModeLabel(row.input_mode)}
-                          </span>
-                        </td>
-                        <td>
-                          <div className={`aggregate-score-track ${agreementTone}`}>
-                            <span
-                              className={`aggregate-score-fill ${agreementTone}`}
-                              style={{ width: `${Math.max(0, Math.min(100, (row.avg_agreement ?? 0) * 100))}%` }}
-                            />
-                            <span className="aggregate-score-label">
-                              {formatPercent(row.avg_agreement)}
-                            </span>
-                          </div>
-                        </td>
-                        {hasExactAccuracy ? (
-                          <td>
-                            <span className={accuracyClass(row.avg_accuracy)}>
-                              {formatPercent(row.avg_accuracy)}
-                            </span>
-                          </td>
-                        ) : null}
-                        {hasLlmAccuracy ? (
-                          <td>
-                            <span className={accuracyClass(row.avg_llm_accuracy)}>
-                              {formatPercent(row.avg_llm_accuracy)}
-                            </span>
-                          </td>
-                        ) : null}
-                        <td className={confidenceClass(row.avg_confidence)}>
-                          {formatConfidence(row.avg_confidence)}
-                        </td>
-                        <td>{formatLatency(row.avg_latency_ms)}</td>
-                        <td>{formatMoney(row.total_cost)}</td>
-                        <td>{row.run_count}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <AggregateLeaderboardClient
+              rows={leaderboard}
+              hasExactAccuracy={hasExactAccuracy}
+              hasLlmAccuracy={hasLlmAccuracy}
+            />
           )}
         </section>
 

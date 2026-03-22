@@ -131,23 +131,33 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
 
   const accuracyAgreementScatterData = [...chartRows]
     .filter(
-      (row): row is ChartDatum & { agreement_pct: number; llm_accuracy_pct: number } =>
-        row.agreement_pct != null && row.llm_accuracy_pct != null
+      (row): row is ChartDatum & { agreement_pct: number; primary_accuracy_pct: number } =>
+        row.agreement_pct != null && row.primary_accuracy_pct != null
     )
     .sort(
       (left, right) =>
-        right.llm_accuracy_pct - left.llm_accuracy_pct ||
+        right.primary_accuracy_pct - left.primary_accuracy_pct ||
         right.agreement_pct - left.agreement_pct ||
         left.model_name.localeCompare(right.model_name)
     );
 
-  const agreementComparisonData = [...chartRows]
-    .filter((row) => row.agreement_pct != null || row.llm_accuracy_pct != null)
+  const accuracyRankingData = [...chartRows]
+    .filter(
+      (row): row is ChartDatum & { primary_accuracy_pct: number } => row.primary_accuracy_pct != null
+    )
     .sort(
       (left, right) =>
-        (right.llm_accuracy_pct ?? right.agreement_pct ?? 0) -
-          (left.llm_accuracy_pct ?? left.agreement_pct ?? 0) ||
+        right.primary_accuracy_pct - left.primary_accuracy_pct ||
         (right.agreement_pct ?? 0) - (left.agreement_pct ?? 0) ||
+        left.model_name.localeCompare(right.model_name)
+    );
+
+  const agreementRankingData = [...chartRows]
+    .filter((row): row is ChartDatum & { agreement_pct: number } => row.agreement_pct != null)
+    .sort(
+      (left, right) =>
+        right.agreement_pct - left.agreement_pct ||
+        (right.primary_accuracy_pct ?? 0) - (left.primary_accuracy_pct ?? 0) ||
         left.model_name.localeCompare(right.model_name)
     );
 
@@ -191,7 +201,9 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
     rows.map((row) => row.avg_agreement).filter((value): value is number => value != null)
   );
   const averageAccuracyGap = average(
-    accuracyAgreementScatterData.map((row) => Math.abs(row.llm_accuracy_pct - row.agreement_pct))
+    accuracyAgreementScatterData.map((row) =>
+      Math.abs(row.primary_accuracy_pct - row.agreement_pct)
+    )
   );
 
   return (
@@ -230,14 +242,14 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                 />
                 <YAxis
                   type="number"
-                  dataKey="llm_accuracy_pct"
+                  dataKey="primary_accuracy_pct"
                   domain={[0, 100]}
                   tick={{ fill: "#94a3b8", fontSize: 12 }}
                   tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
                   axisLine={false}
                   tickLine={false}
                   label={{
-                    value: "Average LLM accuracy",
+                    value: "Average accuracy",
                     angle: -90,
                     position: "insideLeft",
                     offset: -2,
@@ -257,7 +269,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                   contentStyle={tooltipStyle()}
                   formatter={(value, name) => [
                     `${numericValue(value).toFixed(1)}%`,
-                    name === "agreement_pct" ? "Average agreement" : "Average LLM accuracy",
+                    name === "agreement_pct" ? "Average agreement" : "Average accuracy",
                   ]}
                   labelFormatter={(_, payload) =>
                     payload?.[0] && "payload" in payload[0] && payload[0].payload
@@ -278,99 +290,154 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
 
         {averageAccuracyGap != null ? (
           <p className="table-note">
-            Across accuracy-aware models, agreement and LLM accuracy differ by{" "}
+            Across accuracy-aware models, agreement and accuracy differ by{" "}
             {Math.round(averageAccuracyGap)} points on average.
           </p>
         ) : null}
       </section>
 
-      <section className="visual-card dashboard-section-card">
-        <SectionHeader
-          eyebrow="Agreement Comparison"
-          title="Where does consensus pull away from correctness?"
-          description="Blue bars show average agreement. Green bars show LLM accuracy, so gaps reveal when models agree more than they are actually right."
-        />
+      <div className="dual-chart-row">
+        <section className="visual-card dashboard-section-card">
+          <SectionHeader
+            eyebrow="Ranking"
+            title="ACCURACY RANKING"
+            description="Which models get the right answer?"
+          />
 
-        {agreementComparisonData.length === 0 ||
-        agreementComparisonData.every((row) => row.llm_accuracy_pct == null) ? (
-          <p className="empty-state">
-            No accuracy data is available for the loaded models, so the dashboard cannot overlay
-            correctness on top of agreement yet.
-          </p>
-        ) : (
-          <div className="chart-stage-large">
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(240, agreementComparisonData.length * 64)}
-            >
-              <BarChart
-                data={agreementComparisonData}
-                layout="vertical"
-                margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
-                barGap={4}
-                barCategoryGap={18}
+          {accuracyRankingData.length === 0 ? (
+            <p className="empty-state ranking-chart-placeholder">
+              Run a benchmark with --ground-truth to see accuracy rankings
+            </p>
+          ) : (
+            <div className="chart-stage-large">
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(240, accuracyRankingData.length * 60)}
               >
-                <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
-                <XAxis
-                  type="number"
-                  domain={[0, 100]}
-                  tick={{ fill: "#94a3b8", fontSize: 12 }}
-                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  dataKey="model_name"
-                  type="category"
-                  width={170}
-                  tick={{ fill: "#f8fafc", fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle()}
-                  cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
-                  formatter={(value, name) => [
-                    `${numericValue(value).toFixed(1)}%`,
-                    name === "agreement_pct" ? "Average agreement" : "LLM accuracy",
-                  ]}
-                />
-                <Bar
-                  dataKey="agreement_pct"
-                  name="agreement_pct"
-                  fill="#4c9aff"
-                  fillOpacity={0.92}
-                  radius={[0, 12, 12, 0]}
-                />
-                <Bar
-                  dataKey="llm_accuracy_pct"
-                  name="llm_accuracy_pct"
-                  fill="#22c55e"
-                  fillOpacity={0.58}
-                  radius={[0, 12, 12, 0]}
+                <BarChart
+                  data={accuracyRankingData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 28, left: 8, bottom: 8 }}
+                  barCategoryGap={18}
                 >
-                  <LabelList
-                    dataKey="llm_accuracy_pct"
-                    position="right"
-                    formatter={(value: unknown) =>
-                      value == null ? "" : `${Math.round(numericValue(value))}%`
-                    }
-                    fill="#f8fafc"
-                    fontSize={12}
+                  <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+                  <YAxis
+                    dataKey="model_name"
+                    type="category"
+                    width={170}
+                    tick={{ fill: "#f8fafc", fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle()}
+                    cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
+                    formatter={(value) => [`${numericValue(value).toFixed(1)}%`, "Accuracy"]}
+                  />
+                  <Bar
+                    dataKey="primary_accuracy_pct"
+                    name="primary_accuracy_pct"
+                    fill="#22c55e"
+                    fillOpacity={0.92}
+                    radius={[0, 12, 12, 0]}
+                  >
+                    <LabelList
+                      dataKey="primary_accuracy_pct"
+                      position="right"
+                      formatter={(value: unknown) =>
+                        value == null ? "" : `${Math.round(numericValue(value))}%`
+                      }
+                      fill="#f8fafc"
+                      fontSize={12}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
 
-        {averageAgreement != null ? (
-          <p className="table-note">
-            Loaded-run average agreement sits at {formatPercent(averageAgreement)} across{" "}
-            {rows.length} models.
-          </p>
-        ) : null}
-      </section>
+        <section className="visual-card dashboard-section-card">
+          <SectionHeader
+            eyebrow="Ranking"
+            title="AGREEMENT RANKING"
+            description="Which models agree with each other?"
+          />
+
+          {agreementRankingData.length === 0 ? (
+            <p className="empty-state">No agreement data is available for the loaded models.</p>
+          ) : (
+            <div className="chart-stage-large">
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(240, agreementRankingData.length * 60)}
+              >
+                <BarChart
+                  data={agreementRankingData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 28, left: 8, bottom: 8 }}
+                  barCategoryGap={18}
+                >
+                  <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    dataKey="model_name"
+                    type="category"
+                    width={170}
+                    tick={{ fill: "#f8fafc", fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle()}
+                    cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
+                    formatter={(value) => [`${numericValue(value).toFixed(1)}%`, "Agreement"]}
+                  />
+                  <Bar
+                    dataKey="agreement_pct"
+                    name="agreement_pct"
+                    fill="#4c9aff"
+                    fillOpacity={0.92}
+                    radius={[0, 12, 12, 0]}
+                  >
+                    <LabelList
+                      dataKey="agreement_pct"
+                      position="right"
+                      formatter={(value: unknown) =>
+                        value == null ? "" : `${Math.round(numericValue(value))}%`
+                      }
+                      fill="#f8fafc"
+                      fontSize={12}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {averageAgreement != null ? (
+            <p className="table-note">
+              Loaded-run average agreement sits at {formatPercent(averageAgreement)} across{" "}
+              {rows.length} models.
+            </p>
+          ) : null}
+        </section>
+      </div>
 
       <section className="visual-card dashboard-section-card">
         <SectionHeader
