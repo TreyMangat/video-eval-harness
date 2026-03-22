@@ -271,12 +271,26 @@ function aggregateRowsForRun(run: RunPayload): AggregateSourceRow[] {
 }
 
 function hasSegmentData(run: RunPayload): boolean {
-  return run.results.length > 0 || run.segments.length > 0;
+  return (run.results?.length ?? 0) > 0 || (run.segments?.length ?? 0) > 0;
+}
+
+function normalizedRunSearchText(run: RunPayload): string {
+  return [run.config.display_name, run.run_id].filter(Boolean).join(" ").toLowerCase();
+}
+
+function hasNoisyRunName(run: RunPayload): boolean {
+  const normalized = normalizedRunSearchText(run);
+  return ["debug", "e2e", "test", "cors", "stage", "fix"].some((token) =>
+    normalized.includes(token)
+  );
 }
 
 function isQualityAggregateRun(run: RunPayload): boolean {
   const summaryModelCount = Object.keys(run.summaries ?? {}).length;
   if (summaryModelCount < 2 || !hasSegmentData(run)) {
+    return false;
+  }
+  if (hasNoisyRunName(run)) {
     return false;
   }
 
@@ -587,20 +601,15 @@ export function AggregateDashboard({
   runs,
   runList,
   dataDir,
-  basePath = "/",
-  loadedRunCount,
-  nextLoadCount,
 }: {
   runs: RunPayload[];
   runList: RunListItem[];
   dataDir?: string;
-  basePath?: string;
-  loadedRunCount: number;
-  nextLoadCount?: number | null;
 }) {
-  const recentRuns = runList.slice(0, 10);
   const runPayloadById = new Map(runs.map((run) => [run.run_id, run]));
   const qualityRuns = runs.filter(isQualityAggregateRun);
+  const qualityRunIds = new Set(qualityRuns.map((run) => run.run_id));
+  const recentRuns = runList.filter((run) => qualityRunIds.has(run.run_id)).slice(0, 10);
   const accuracyRuns = qualityRuns.filter(runHasAccuracyData);
   const aggregateStats = computeAggregateStats(qualityRuns);
   const leaderboard = computeAggregateLeaderboard(qualityRuns);
@@ -616,12 +625,6 @@ export function AggregateDashboard({
   const accuracyRunCount = countAccuracyRuns(qualityRuns);
   const accuracySources = accuracySourceBreakdown(accuracyRuns);
   const filteredRunCount = Math.max(runs.length - qualityRuns.length, 0);
-  const totalRuns = runList.length;
-  const allRunsLoaded = totalRuns === 0 || loadedRunCount >= totalRuns;
-  const loadMoreHref =
-    nextLoadCount && nextLoadCount > loadedRunCount
-      ? buildHref(basePath, { dataDir, limit: nextLoadCount })
-      : null;
 
   if (runList.length === 0) {
     return (
@@ -657,24 +660,14 @@ export function AggregateDashboard({
               </p>
             </div>
             <p className="aggregate-hero-note">
-              {allRunsLoaded ? (
-                `All ${loadedRunCount} available runs are loaded into the aggregate leaderboard.`
-              ) : (
-                <>
-                  Showing aggregate metrics from {loadedRunCount} loaded runs out of {totalRuns}.{" "}
-                  {loadMoreHref ? (
-                    <Link href={loadMoreHref} className="aggregate-inline-link">
-                      Load more history →
-                    </Link>
-                  ) : null}
-                </>
-              )}
+              All available static exports and live API runs load on first render, so the
+              dashboard stays stable across refreshes and route changes.
             </p>
             <p className="chart-desc">
-              Aggregate cards and charts use {aggregateStats.total_runs} quality runs from the
-              loaded merged history (committed static exports plus live Modal runs). Single-model
-              runs, empty runs, and models with 0% parse success are filtered out. The Recent Runs
-              strip uses the broader merged run index.
+              Aggregate cards and charts use {aggregateStats.total_runs} quality runs from the full
+              merged history (committed static exports plus live Modal runs). Single-model runs,
+              empty runs, noisy debug-style runs, and models with 0% parse success are filtered out
+              before aggregation.
             </p>
           </div>
         </section>

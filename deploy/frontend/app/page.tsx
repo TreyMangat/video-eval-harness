@@ -7,9 +7,6 @@ import type { RunPayload } from "../lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AGGREGATE_HISTORY_STEP = 10;
-const AGGREGATE_THRESHOLD = 20;
-
 function readFirst(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -23,28 +20,6 @@ function buildHref(pathname: string, query: Record<string, string | undefined>):
   }
   const suffix = params.toString();
   return suffix ? `${pathname}?${suffix}` : pathname;
-}
-
-function parsePositiveInteger(value: string | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
-function resolveLoadLimit(totalRuns: number, requestedLimit: number | null): number {
-  if (totalRuns === 0) {
-    return 0;
-  }
-  if (totalRuns <= AGGREGATE_THRESHOLD) {
-    return totalRuns;
-  }
-  const baseline = requestedLimit ?? AGGREGATE_HISTORY_STEP;
-  return Math.min(totalRuns, Math.max(AGGREGATE_HISTORY_STEP, baseline));
 }
 
 async function loadAggregateRuns(runIds: string[], dataDir?: string): Promise<RunPayload[]> {
@@ -69,7 +44,6 @@ export default async function HomePage({
   searchParams: Promise<{
     run?: string | string[];
     dataDir?: string | string[];
-    limit?: string | string[];
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
@@ -81,23 +55,16 @@ export default async function HomePage({
   }
 
   const runList = await listRuns(dataDir);
-  const requestedLimit = parsePositiveInteger(readFirst(resolvedSearchParams.limit));
-  const loadLimit = resolveLoadLimit(runList.length, requestedLimit);
   const loadedRuns = await loadAggregateRuns(
-    runList.slice(0, loadLimit).map((run) => run.run_id),
+    runList.map((run) => run.run_id),
     dataDir
   );
-  const nextLoadCount =
-    loadLimit < runList.length ? Math.min(runList.length, loadLimit + AGGREGATE_HISTORY_STEP) : null;
 
   return (
     <AggregateDashboard
       runs={loadedRuns}
       runList={runList}
       dataDir={dataDir}
-      basePath="/"
-      loadedRunCount={loadedRuns.length}
-      nextLoadCount={nextLoadCount}
     />
   );
 }

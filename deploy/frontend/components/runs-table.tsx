@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
 import { formatDateTime } from "../lib/analysis";
-import { getRunType, isAccuracyTestRun, isComparisonRun } from "../lib/run-type";
+import { getRunType, isAccuracyTestRun, isBenchmarkRun, isComparisonRun } from "../lib/run-type";
 import { RunTypeBadge } from "./run-type-badge";
 
 export type RunsTableRow = {
@@ -15,7 +15,7 @@ export type RunsTableRow = {
   video_names: string[];
   best_agreement: number | null;
   best_model_name: string | null;
-  run_type?: "comparison" | "accuracy_test" | null;
+  run_type?: "comparison" | "accuracy_test" | "benchmark" | null;
   has_accuracy?: boolean;
   data_dir?: string;
 };
@@ -40,7 +40,7 @@ function buildHref(pathname: string, query: Record<string, string | undefined>):
 
 export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "accuracy" | "comparison">("all");
+  const [filter, setFilter] = useState<"all" | "accuracy" | "comparison" | "benchmark">("all");
   const deferredQuery = useDeferredValue(query);
 
   const counts = useMemo(
@@ -48,6 +48,7 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
       all: rows.length,
       accuracy: rows.filter((row) => isAccuracyTestRun(row)).length,
       comparison: rows.filter((row) => isComparisonRun(row)).length,
+      benchmark: rows.filter((row) => isBenchmarkRun(row)).length,
     }),
     [rows]
   );
@@ -60,6 +61,9 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
       }
       if (filter === "comparison") {
         return runType === "comparison";
+      }
+      if (filter === "benchmark") {
+        return runType === "benchmark";
       }
       return true;
     });
@@ -114,6 +118,13 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
           onClick={() => setFilter("comparison")}
         >
           Comparisons ({counts.comparison})
+        </button>
+        <button
+          type="button"
+          className={`filter-tab ${filter === "benchmark" ? "active" : ""}`}
+          onClick={() => setFilter("benchmark")}
+        >
+          Benchmarks ({counts.benchmark})
         </button>
       </div>
 
