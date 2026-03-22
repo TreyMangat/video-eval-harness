@@ -7,6 +7,7 @@ ingest -> segment -> extract frames -> label -> evaluate -> export.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -55,7 +56,15 @@ class MockProvider(BaseProvider):
             "uncertainty_flags": [],
         })
 
-    def complete(self, model_id, prompt, image_paths=None, max_tokens=2048, temperature=0.1):
+    def complete(
+        self,
+        model_id,
+        prompt,
+        image_paths=None,
+        max_tokens=2048,
+        temperature=0.1,
+        video_path=None,
+    ):
         text = self._responses.get(model_id, self._default_response)
         return ProviderResponse(
             text=text,
@@ -471,6 +480,42 @@ class TestCaching:
         h3 = cache.hash_content("world")
         assert h1 == h2
         assert h1 != h3
+        cache.close()
+
+    def test_make_key_includes_explicit_input_mode(self, tmp_path):
+        cache = ResponseCache(cache_dir=str(tmp_path / "cache"))
+        frames_key = cache.make_key("model-a", "prompt123", "input456", input_mode="frames")
+        video_key = cache.make_key("model-a", "prompt123", "input456", input_mode="video")
+        assert frames_key != video_key
+        assert frames_key.endswith(":frames")
+        assert video_key.endswith(":video")
+        cache.close()
+
+    def test_make_key_infers_runner_input_mode(self, tmp_path):
+        cache = ResponseCache(cache_dir=str(tmp_path / "cache"))
+
+        class FakeRunner:
+            def __init__(self, input_mode: str, *, has_video: bool = True):
+                self.input_mode = input_mode
+                self.video_paths = {"vid-1": Path("video.mp4")} if has_video else {}
+
+            def build_key(self, *, supports_video: bool = True) -> str:
+                model_cfg = type("ModelCfg", (), {"supports_video": supports_video})()
+                segment = type("Segment", (), {"video_id": "vid-1"})()
+                return cache.make_key("model-a", "prompt123", "input456")
+
+        frames_key = FakeRunner("frames").build_key()
+        video_key = FakeRunner("video").build_key()
+        auto_video_key = FakeRunner("auto").build_key(supports_video=True)
+        auto_frames_key = FakeRunner("auto").build_key(supports_video=False)
+        auto_missing_video_key = FakeRunner("auto", has_video=False).build_key(supports_video=True)
+
+        assert frames_key.endswith(":frames")
+        assert video_key.endswith(":video")
+        assert auto_video_key.endswith(":video")
+        assert auto_frames_key.endswith(":frames")
+        assert auto_missing_video_key.endswith(":frames")
+        assert len({frames_key, video_key, auto_video_key, auto_frames_key}) >= 2
         cache.close()
 
 
