@@ -56,6 +56,7 @@ export type JobStatusResponse = {
 export type UploadAndBenchmarkOptions = {
   onStatus?: (message: string) => void;
   previewId?: string;
+  runType?: "comparison" | "accuracy_test";
   groundTruth?: Array<{
     segment_index: number;
     label: string;
@@ -181,6 +182,9 @@ export async function uploadAndBenchmark(
     }
     if (options?.previewId) {
       form.append("preview_id", options.previewId);
+    }
+    if (options?.runType) {
+      form.append("run_type", options.runType);
     }
     if (models && models.length > 0) {
       form.append("models", JSON.stringify(models));

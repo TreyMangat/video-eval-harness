@@ -10,10 +10,12 @@ import {
   getSweepData,
   modelColor,
 } from "../lib/analysis";
+import { getRunType } from "../lib/run-type";
 import type { RunListItem, RunPayload } from "../lib/types";
 import { AggregateLeaderboardClient } from "./aggregate-leaderboard-client";
 import { AggregateVisualsClient } from "./aggregate-visuals-client";
 import { TopNav } from "./navigation";
+import { RunTypeBadge } from "./run-type-badge";
 
 export interface AggregateStats {
   total_runs: number;
@@ -433,6 +435,31 @@ function countAccuracyRuns(runs: RunPayload[]): number {
   return runs.filter(runHasAccuracyData).length;
 }
 
+function accuracySourceBreakdown(runs: RunPayload[]): {
+  benchmark: number;
+  accuracy_test: number;
+  comparison: number;
+} {
+  return runs.reduce(
+    (counts, run) => {
+      const runType = getRunType(run);
+      if (runType === "benchmark") {
+        counts.benchmark += 1;
+      } else if (runType === "accuracy_test") {
+        counts.accuracy_test += 1;
+      } else {
+        counts.comparison += 1;
+      }
+      return counts;
+    },
+    {
+      benchmark: 0,
+      accuracy_test: 0,
+      comparison: 0,
+    }
+  );
+}
+
 function computeAgreementVerdict(
   matrix: AggregateAgreementMatrix
 ): AggregateAgreementVerdict | null {
@@ -587,6 +614,7 @@ export function AggregateDashboard({
   const aggregateAgreementMatrix = computeAggregateAgreementMatrix(qualityRuns);
   const agreementVerdict = computeAgreementVerdict(aggregateAgreementMatrix);
   const accuracyRunCount = countAccuracyRuns(qualityRuns);
+  const accuracySources = accuracySourceBreakdown(accuracyRuns);
   const filteredRunCount = Math.max(runs.length - qualityRuns.length, 0);
   const totalRuns = runList.length;
   const allRunsLoaded = totalRuns === 0 || loadedRunCount >= totalRuns;
@@ -660,7 +688,11 @@ export function AggregateDashboard({
             </span>
             <span className="winner-sub">
               {bestAccuracy
-                ? `LLM-judged accuracy across ${accuracyRunCount} runs`
+                ? accuracySources.accuracy_test === 0 && accuracySources.comparison === 0
+                  ? `LLM-judged accuracy across ${accuracyRunCount} benchmark runs`
+                  : accuracySources.comparison > 0
+                    ? `LLM-judged accuracy across ${accuracyRunCount} runs (${accuracySources.benchmark} benchmarks, ${accuracySources.accuracy_test} accuracy tests, ${accuracySources.comparison} comparisons)`
+                    : `LLM-judged accuracy across ${accuracyRunCount} runs (${accuracySources.benchmark} benchmarks, ${accuracySources.accuracy_test} accuracy tests)`
                 : "Run with --ground-truth to enable"}
             </span>
           </div>
@@ -744,12 +776,16 @@ export function AggregateDashboard({
             {recentRuns.map((run) => {
               const runPayload = runPayloadById.get(run.run_id);
               const segmentCount = runPayload?.segments.length;
+              const runBadgeSource = runPayload ?? run;
 
               return (
                 <article key={run.run_id} className="visual-card recent-run-card">
                   <div className="recent-run-card-head">
                     <div className="run-list-cell">
-                      <p className="run-list-name">{displayRunName(run.run_id, run.created_at)}</p>
+                      <div className="run-list-title-row">
+                        <p className="run-list-name">{displayRunName(run.run_id, run.created_at)}</p>
+                        <RunTypeBadge run={runBadgeSource} />
+                      </div>
                       <p className="run-list-raw">{run.run_id}</p>
                     </div>
                     <p className="recent-run-card-date">{formatDateTime(run.created_at)}</p>

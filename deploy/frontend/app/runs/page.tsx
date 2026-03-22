@@ -21,11 +21,14 @@ function buildRunsTableRow(
     created_at: string;
     models: string[];
     video_ids: string[];
+    run_type?: "comparison" | "accuracy_test" | null;
   },
   dataDir: string | undefined,
   options?: {
     bestAgreement?: number | null;
     bestModelName?: string | null;
+    runType?: "comparison" | "accuracy_test" | null;
+    hasAccuracy?: boolean;
   }
 ): RunsTableRow {
   return {
@@ -36,6 +39,8 @@ function buildRunsTableRow(
     video_names: run.video_ids.map((videoId) => displayVideoName(videoId)),
     best_agreement: options?.bestAgreement ?? null,
     best_model_name: options?.bestModelName ?? null,
+    run_type: options?.runType ?? run.run_type ?? null,
+    has_accuracy: options?.hasAccuracy ?? false,
     data_dir: dataDir,
   };
 }
@@ -60,6 +65,10 @@ export default async function RunsPage({
         return buildRunsTableRow(run, dataDir, {
           bestAgreement: bestRow?.agreement ?? null,
           bestModelName: bestRow?.model_name ?? null,
+          runType: payload?.run_type ?? run.run_type ?? null,
+          hasAccuracy: comparisonRows.some(
+            (row) => row.accuracy != null || row.llm_accuracy != null
+          ),
         });
       })
     )

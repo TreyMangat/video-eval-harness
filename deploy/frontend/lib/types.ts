@@ -62,6 +62,7 @@ export type SegmentSummary = {
 
 export type RunPayload = {
   run_id: string;
+  run_type?: "comparison" | "accuracy_test" | null;
   config: {
     models: string[];
     prompt_version: string;
@@ -115,6 +116,7 @@ export type RunListItem = {
   models: string[];
   prompt_version: string;
   video_ids: string[];
+  run_type?: "comparison" | "accuracy_test" | null;
 };
 
 export type ModelCatalogItem = {

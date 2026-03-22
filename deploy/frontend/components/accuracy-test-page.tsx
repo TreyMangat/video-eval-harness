@@ -547,6 +547,7 @@ export function AccuracyTestPage() {
         selectedModels,
         benchmarkName.trim() || undefined,
         {
+          runType: "accuracy_test",
           previewId: preview.preview_id,
           groundTruth,
           onStatus: (message) => {

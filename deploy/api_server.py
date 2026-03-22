@@ -31,8 +31,10 @@ DEFAULT_RUNS_DIR = "runs"
 DEFAULT_JOBS_DIR = "jobs"
 DEFAULT_PREVIEWS_DIR = "previews"
 UPLOADS_DIR = "uploads"
+RUN_METADATA_FILENAME = "run_metadata.json"
 PUBLIC_BENCHMARK_CONFIG = ROOT / "configs" / "benchmark_all_models_optimized.yaml"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+ALLOWED_RUN_TYPES = {"comparison", "accuracy_test"}
 ESTIMATED_TIME_S = 90
 
 try:
@@ -54,6 +56,7 @@ class JobState(TypedDict):
     error: Optional[str]
     stage: Optional[str]
     progress: Optional[str]
+    run_type: str
 
 
 ArtifactSync = Callable[[], None]
@@ -67,13 +70,17 @@ JobRunner = Callable[
         list[str],
         Optional[str],
         set[str],
+        str,
         Optional[Path],
         Optional[ArtifactSync],
         Optional[JobStateSaver],
     ],
     None,
 ]
-JobSubmitter = Callable[[Path, str, Path, list[str], Optional[str], set[str], Optional[Path]], None]
+JobSubmitter = Callable[
+    [Path, str, Path, list[str], Optional[str], set[str], str, Optional[Path]],
+    None,
+]
 
 PUBLIC_MODEL_CATALOG: list[dict[str, Any]] = [
     {
@@ -379,11 +386,13 @@ def create_app(
         name: Optional[str] = Form(None),
         ground_truth: Optional[str] = Form(None),
         preview_id: Optional[str] = Form(None),
+        run_type: str = Form("comparison"),
     ) -> dict[str, Any]:
         upload = video or uploaded_file
         requested_models = _parse_requested_models(models)
         if not requested_models:
             requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
+        normalized_run_type = _normalize_run_type(run_type)
 
         artifacts_path = Path(app.state.artifacts_dir)
         if preview_id is not None and preview_id.strip() and upload is None:
@@ -479,6 +488,7 @@ def create_app(
             "queued",
             stage="queued",
             progress="Upload received. Waiting for a worker...",
+            run_type=normalized_run_type,
             sync_artifacts=app.state.sync_artifacts,
             persist_job_state=app.state.job_state_saver,
         )
@@ -491,6 +501,7 @@ def create_app(
                     requested_models,
                     _normalize_name(name),
                     _existing_run_ids(_runs_dir(artifacts_path)),
+                    normalized_run_type,
                     ground_truth_path,
                 )
             else:
@@ -502,6 +513,7 @@ def create_app(
                     requested_models,
                     _normalize_name(name),
                     _existing_run_ids(_runs_dir(artifacts_path)),
+                    normalized_run_type,
                     ground_truth_path,
                     app.state.sync_artifacts,
                     app.state.job_state_saver,
@@ -514,6 +526,7 @@ def create_app(
                 error=f"Unable to start benchmark job: {exc}",
                 stage="failed",
                 progress="Unable to start benchmark job.",
+                run_type=normalized_run_type,
                 sync_artifacts=app.state.sync_artifacts,
                 persist_job_state=app.state.job_state_saver,
             )
@@ -533,7 +546,7 @@ def create_app(
             job = _normalize_loaded_job(app.state.job_state_loader(job_id), job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Unknown job ID.")
-        return job
+        return {key: value for key, value in job.items() if key != "run_type"}
 
     return app
 
@@ -650,6 +663,56 @@ def _load_preview_state(artifacts_dir: Path, preview_id: str) -> Optional[dict[s
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else None
+
+
+def _coerce_run_type(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in ALLOWED_RUN_TYPES:
+        return normalized
+    return None
+
+
+def _normalize_run_type(value: Optional[str]) -> str:
+    normalized = _coerce_run_type(value)
+    if normalized is not None:
+        return normalized
+    if value is None or not str(value).strip():
+        return "comparison"
+    raise HTTPException(
+        status_code=422,
+        detail="run_type must be either 'comparison' or 'accuracy_test'.",
+    )
+
+
+def _run_metadata_path(run_dir: Path) -> Path:
+    return run_dir / RUN_METADATA_FILENAME
+
+
+def _load_run_metadata(run_dir: Path) -> dict[str, Any]:
+    path = _run_metadata_path(run_dir)
+    if not path.exists():
+        return {}
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_stored_run_type(run_dir: Path) -> Optional[str]:
+    return _coerce_run_type(_load_run_metadata(run_dir).get("run_type"))
+
+
+def _write_run_metadata(run_dir: Path, run_type: str) -> None:
+    normalized_run_type = _coerce_run_type(run_type) or "comparison"
+    _run_metadata_path(run_dir).write_text(
+        json.dumps({"run_type": normalized_run_type}, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _subsample_preview_segments(segments: list[Any], max_segments: int) -> list[Any]:
@@ -927,9 +990,16 @@ def _save_job(
     error: Optional[str] = None,
     stage: Optional[str] = None,
     progress: Optional[str] = None,
+    run_type: Optional[str] = None,
     sync_artifacts: Optional[ArtifactSync] = None,
     persist_job_state: Optional[JobStateSaver] = None,
 ) -> JobState:
+    existing_job = _load_job(artifacts_dir, job_id)
+    normalized_run_type = (
+        _coerce_run_type(run_type)
+        or (existing_job["run_type"] if existing_job is not None else None)
+        or "comparison"
+    )
     job_data: JobState = {
         "job_id": job_id,
         "status": status,
@@ -937,6 +1007,7 @@ def _save_job(
         "error": error,
         "stage": stage,
         "progress": progress,
+        "run_type": normalized_run_type,
     }
     (_jobs_dir(artifacts_dir) / f"{job_id}.json").write_text(
         json.dumps(job_data),
@@ -954,7 +1025,10 @@ def _load_job(artifacts_dir: Path, job_id: str) -> Optional[JobState]:
     if not path.exists():
         return None
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
     if not isinstance(payload, dict):
         return None
 
@@ -967,6 +1041,7 @@ def _load_job(artifacts_dir: Path, job_id: str) -> Optional[JobState]:
     stored_job_id = payload.get("job_id")
     stage = payload.get("stage")
     progress_msg = payload.get("progress")
+    run_type = _coerce_run_type(payload.get("run_type")) or "comparison"
 
     return {
         "job_id": stored_job_id if isinstance(stored_job_id, str) else job_id,
@@ -975,6 +1050,7 @@ def _load_job(artifacts_dir: Path, job_id: str) -> Optional[JobState]:
         "error": error if isinstance(error, str) else None,
         "stage": stage if isinstance(stage, str) else None,
         "progress": progress_msg if isinstance(progress_msg, str) else None,
+        "run_type": run_type,
     }
 
 
@@ -991,6 +1067,7 @@ def _normalize_loaded_job(raw_job: Any, fallback_job_id: str) -> Optional[JobSta
     stage = raw_job.get("stage")
     progress_msg = raw_job.get("progress")
     stored_job_id = raw_job.get("job_id")
+    run_type = _coerce_run_type(raw_job.get("run_type")) or "comparison"
 
     return {
         "job_id": stored_job_id if isinstance(stored_job_id, str) else fallback_job_id,
@@ -999,6 +1076,7 @@ def _normalize_loaded_job(raw_job: Any, fallback_job_id: str) -> Optional[JobSta
         "error": error if isinstance(error, str) else None,
         "stage": stage if isinstance(stage, str) else None,
         "progress": progress_msg if isinstance(progress_msg, str) else None,
+        "run_type": run_type,
     }
 
 
@@ -1087,6 +1165,7 @@ def _run_benchmark_job(
     requested_models: list[str],
     name: Optional[str],
     before_runs: set[str],
+    run_type: str = "comparison",
     ground_truth_path: Optional[Path] = None,
     sync_artifacts: Optional[ArtifactSync] = None,
     persist_job_state: Optional[JobStateSaver] = None,
@@ -1187,6 +1266,7 @@ def _run_benchmark_job(
                 error=_command_error(stdout_text, stderr_text),
                 stage="failed",
                 progress="Benchmark failed before results were saved.",
+                run_type=run_type,
                 sync_artifacts=sync_artifacts,
                 persist_job_state=persist_job_state,
             )
@@ -1213,17 +1293,19 @@ def _run_benchmark_job(
                 error="Benchmark completed but the run ID could not be detected.",
                 stage="failed",
                 progress="Benchmark finished, but the run ID could not be detected.",
+                run_type=run_type,
                 sync_artifacts=sync_artifacts,
                 persist_job_state=persist_job_state,
             )
             return
 
+        run_dir = _runs_dir(artifacts_dir) / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
         if ground_truth_path is not None:
-            run_dir = _runs_dir(artifacts_dir) / run_id
-            run_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ground_truth_path, run_dir / "ground_truth.json")
-            if sync_artifacts is not None:
-                sync_artifacts()
+        _write_run_metadata(run_dir, run_type)
+        if sync_artifacts is not None:
+            sync_artifacts()
 
         _save_job(
             artifacts_dir,
@@ -1232,6 +1314,7 @@ def _run_benchmark_job(
             run_id=run_id,
             stage="complete",
             progress="Benchmark complete.",
+            run_type=run_type,
             sync_artifacts=sync_artifacts,
             persist_job_state=persist_job_state,
         )
@@ -1244,6 +1327,7 @@ def _run_benchmark_job(
             error=str(exc),
             stage="failed",
             progress="Benchmark failed unexpectedly.",
+            run_type=run_type,
             sync_artifacts=sync_artifacts,
             persist_job_state=persist_job_state,
         )
@@ -1282,7 +1366,8 @@ def _list_runs(artifacts_dir: Path) -> list[dict[str, Any]]:
     runs_dir = _runs_dir(artifacts_dir)
 
     for run in storage.list_runs():
-        if not (runs_dir / run.run_id).exists():
+        run_dir = runs_dir / run.run_id
+        if not run_dir.exists():
             continue
         seen_run_ids.add(run.run_id)
         run_rows.append(
@@ -1292,6 +1377,7 @@ def _list_runs(artifacts_dir: Path) -> list[dict[str, Any]]:
                 "models": run.models,
                 "prompt_version": run.prompt_version,
                 "video_ids": run.video_ids,
+                "run_type": _load_stored_run_type(run_dir),
             }
         )
 
@@ -1357,6 +1443,7 @@ def _load_run_meta_from_exports(run_dir: Path) -> Optional[dict[str, Any]]:
         "models": models,
         "prompt_version": "action_label",
         "video_ids": video_ids,
+        "run_type": _load_stored_run_type(run_dir),
     }
 
 
@@ -1571,7 +1658,11 @@ def _normalize_export_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def _normalize_export_payload(payload: dict[str, Any], run_id: str) -> dict[str, Any]:
+def _normalize_export_payload(
+    payload: dict[str, Any],
+    run_id: str,
+    run_dir: Optional[Path] = None,
+) -> dict[str, Any]:
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     models = [
         str(model_name)
@@ -1628,6 +1719,7 @@ def _normalize_export_payload(payload: dict[str, Any], run_id: str) -> dict[str,
     normalized_payload = {
         **payload,
         "run_id": str(payload.get("run_id") or run_id),
+        "run_type": _load_stored_run_type(run_dir) if run_dir is not None else None,
         "config": normalized_config,
         "models": models,
         "videos": videos,
@@ -1649,17 +1741,22 @@ def _load_exported_run_payload(artifacts_dir: Path, run_id: str) -> Optional[dic
     payload = _load_export_json(artifacts_dir, run_id)
     if payload is None:
         return None
+    run_dir = _runs_dir(artifacts_dir) / run_id
     if isinstance(payload, list):
         payload = {"run_id": run_id, "results": payload}
     if not isinstance(payload, dict):
         return None
     try:
-        return _normalize_export_payload(payload, run_id)
+        return _normalize_export_payload(payload, run_id, run_dir)
     except Exception:
         results = payload.get("results")
         if isinstance(results, list):
             try:
-                return _normalize_export_payload({"run_id": run_id, "results": results}, run_id)
+                return _normalize_export_payload(
+                    {"run_id": run_id, "results": results},
+                    run_id,
+                    run_dir,
+                )
             except Exception:
                 return None
         return None
@@ -1743,6 +1840,7 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
     run_config = storage.get_run(run_id)
     if run_config is None:
         raise ValueError(f"No run found for '{run_id}'")
+    run_dir = Path(storage.run_dir(run_id))
 
     results = storage.get_run_results(run_id)
     segments = _collect_segments(storage, run_config.video_ids)
@@ -1789,6 +1887,7 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
 
     return {
         "run_id": run_id,
+        "run_type": _load_stored_run_type(run_dir),
         "config": run_config.model_dump(),
         "models": models,
         "videos": [

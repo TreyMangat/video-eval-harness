@@ -8,6 +8,7 @@ import {
   VariantHeatmapCard,
 } from "../../../components/analysis-panels";
 import { TopNav } from "../../../components/navigation";
+import { RunTypeBadge } from "../../../components/run-type-badge";
 import {
   bestOverallModel,
   bestValueModel,
@@ -26,6 +27,7 @@ import {
   selectFeaturedVariant,
   selectSampleSegments,
 } from "../../../lib/analysis";
+import { getRunType } from "../../../lib/run-type";
 import { loadRun } from "../../../lib/run-source";
 
 export const runtime = "nodejs";
@@ -106,6 +108,7 @@ export default async function RunReportPage({
   const featuredVariant = selectFeaturedVariant(sweepData);
   const samples = selectSampleSegments(run, featuredVariant, 3);
   const runLabel = displayRunName(run.run_id, run.config.created_at);
+  const runType = getRunType(run);
   const parseSuccessMatrix = sweepData
     ? buildParseSuccessMatrix(sweepData, run.models, sweepData.variants)
     : null;
@@ -119,10 +122,18 @@ export default async function RunReportPage({
       <section className="visual-card report-verdict-card">
         <p className="section-eyebrow">Printable Summary</p>
         <h1 className="report-verdict">{verdictSentence(runLabel, winner, rows, sweepData)}</h1>
-        <p className="report-subhead">
-          {runLabel}
-          {featuredVariant ? ` \u00b7 sample segments from ${featuredVariant}` : ""}
-        </p>
+        <div className="report-subhead-row">
+          <p className="report-subhead">
+            {runLabel}
+            {featuredVariant ? ` \u00b7 sample segments from ${featuredVariant}` : ""}
+          </p>
+          <RunTypeBadge run={run} />
+        </div>
+        {runType === "accuracy_test" ? (
+          <p className="report-accuracy-note">
+            This run was scored against user-provided ground truth labels.
+          </p>
+        ) : null}
       </section>
 
       <section className="hero-grid report-hero-grid">

@@ -19,6 +19,7 @@ type JsonRunBundle = {
   agreement: Record<string, Record<string, number>> | null;
 };
 const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
+const RUN_METADATA_FILENAME = "run_metadata.json";
 
 async function exists(targetPath: string): Promise<boolean> {
   try {
@@ -407,6 +408,30 @@ async function loadSweepSummary(
   return coerceSweepSummary(raw);
 }
 
+async function loadRunType(
+  runId: string,
+  dataDir?: string
+): Promise<RunPayload["run_type"]> {
+  const runsDir = await resolveRunsDir(dataDir);
+  const metadataPath = path.join(runsDir, runId, RUN_METADATA_FILENAME);
+  if (!(await exists(metadataPath))) {
+    return null;
+  }
+
+  try {
+    const raw = JSON.parse(await fs.readFile(metadataPath, "utf-8")) as unknown;
+    const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    const runType = record?.run_type;
+    if (runType === "comparison" || runType === "accuracy_test") {
+      return runType;
+    }
+  } catch (error) {
+    console.error(`Failed to load run metadata for ${runId}:`, error);
+  }
+
+  return null;
+}
+
 function repoRootFromArtifacts(artifactsDir: string): string {
   return path.dirname(artifactsDir);
 }
@@ -507,7 +532,7 @@ export async function listArtifactRuns(dataDir?: string): Promise<RunListItem[]>
     }
   }
 
-  const runs = await Promise.all(
+  const runs: Array<RunListItem | null> = await Promise.all(
     [...runIds].map(async (runId) => {
       try {
         const payload = await loadArtifactRun(runId, dataDir);
@@ -520,6 +545,7 @@ export async function listArtifactRuns(dataDir?: string): Promise<RunListItem[]>
           models: payload.models,
           prompt_version: payload.config.prompt_version,
           video_ids: payload.config.video_ids,
+          run_type: payload.run_type ?? null,
         };
       } catch (error) {
         console.error(`Skipping corrupt static run ${runId}:`, error);
@@ -546,6 +572,7 @@ export async function loadArtifactRun(
   }
 
   const sweepSummary = await loadSweepSummary(runId, dataDir);
+  const runType = await loadRunType(runId, dataDir);
   const payload = buildRunPayload(
     runId,
     runData.results,
@@ -555,6 +582,7 @@ export async function loadArtifactRun(
 
   return {
     ...payload,
+    run_type: runType,
     agreement: runData.agreement ?? payload.agreement,
   };
 }

@@ -466,6 +466,7 @@ export function UploadZone() {
         selectedModels,
         benchmarkName.trim() || undefined,
         {
+          runType: "comparison",
           onStatus: (message) => {
             setStatusMessage(message);
           },

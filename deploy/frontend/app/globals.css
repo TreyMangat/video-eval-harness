@@ -1491,6 +1491,13 @@ textarea:focus {
   gap: 4px;
 }
 
+.run-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .run-list-name {
   margin: 0;
   font-size: 0.875rem;
@@ -1511,6 +1518,45 @@ textarea:focus {
 
 .recent-run-link:hover {
   color: #bfdbfe;
+}
+
+.run-type-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-accuracy {
+  background: rgba(99, 153, 34, 0.12);
+  color: var(--color-text-success, #639922);
+}
+
+.badge-comparison {
+  background: rgba(55, 138, 221, 0.12);
+  color: var(--color-text-info, #378add);
+}
+
+.badge-benchmark {
+  background: rgba(127, 119, 221, 0.12);
+  color: #7f77dd;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-accuracy {
+    background: rgba(99, 153, 34, 0.2);
+  }
+
+  .badge-comparison {
+    background: rgba(55, 138, 221, 0.2);
+  }
+
+  .badge-benchmark {
+    background: rgba(127, 119, 221, 0.2);
+  }
 }
 
 .aggregate-model-cell {
@@ -2325,6 +2371,19 @@ textarea:focus {
   color: var(--muted);
 }
 
+.report-subhead-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.report-accuracy-note {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .report-hero-grid {
   margin-bottom: 32px;
 }
@@ -2966,6 +3025,38 @@ textarea:focus {
 
 .runs-filter-row {
   margin-bottom: 18px;
+}
+
+.run-filter-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md, 8px);
+  width: fit-content;
+}
+
+.filter-tab {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.filter-tab.active {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .runs-filter-row input {

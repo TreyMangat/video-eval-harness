@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
 import { formatDateTime } from "../lib/analysis";
+import { getRunType, isAccuracyTestRun, isComparisonRun } from "../lib/run-type";
+import { RunTypeBadge } from "./run-type-badge";
 
 export type RunsTableRow = {
   run_id: string;
@@ -13,6 +15,8 @@ export type RunsTableRow = {
   video_names: string[];
   best_agreement: number | null;
   best_model_name: string | null;
+  run_type?: "comparison" | "accuracy_test" | null;
+  has_accuracy?: boolean;
   data_dir?: string;
 };
 
@@ -36,15 +40,36 @@ function buildHref(pathname: string, query: Record<string, string | undefined>):
 
 export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "accuracy" | "comparison">("all");
   const deferredQuery = useDeferredValue(query);
 
+  const counts = useMemo(
+    () => ({
+      all: rows.length,
+      accuracy: rows.filter((row) => isAccuracyTestRun(row)).length,
+      comparison: rows.filter((row) => isComparisonRun(row)).length,
+    }),
+    [rows]
+  );
+
   const filteredRows = useMemo(() => {
+    const typeFilteredRows = rows.filter((row) => {
+      const runType = getRunType(row);
+      if (filter === "accuracy") {
+        return runType === "accuracy_test";
+      }
+      if (filter === "comparison") {
+        return runType === "comparison";
+      }
+      return true;
+    });
+
     const normalized = deferredQuery.trim().toLowerCase();
     if (!normalized) {
-      return rows;
+      return typeFilteredRows;
     }
 
-    return rows.filter((row) => {
+    return typeFilteredRows.filter((row) => {
       const haystack = [
         row.display_name,
         row.run_id,
@@ -55,7 +80,7 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
         .toLowerCase();
       return haystack.includes(normalized);
     });
-  }, [deferredQuery, rows]);
+  }, [deferredQuery, filter, rows]);
 
   return (
     <section className="visual-card">
@@ -66,6 +91,30 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
           Filter by run name, model, or video, then jump straight into the dashboard, report, or
           segment story.
         </p>
+      </div>
+
+      <div className="run-filter-tabs" aria-label="Filter runs by type">
+        <button
+          type="button"
+          className={`filter-tab ${filter === "all" ? "active" : ""}`}
+          onClick={() => setFilter("all")}
+        >
+          All runs ({counts.all})
+        </button>
+        <button
+          type="button"
+          className={`filter-tab ${filter === "accuracy" ? "active" : ""}`}
+          onClick={() => setFilter("accuracy")}
+        >
+          Accuracy tests ({counts.accuracy})
+        </button>
+        <button
+          type="button"
+          className={`filter-tab ${filter === "comparison" ? "active" : ""}`}
+          onClick={() => setFilter("comparison")}
+        >
+          Comparisons ({counts.comparison})
+        </button>
       </div>
 
       <div className="runs-filter-row">
@@ -98,7 +147,10 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                 <tr key={row.run_id}>
                   <td>
                     <div className="run-list-cell">
-                      <p className="run-list-name">{row.display_name}</p>
+                      <div className="run-list-title-row">
+                        <p className="run-list-name">{row.display_name}</p>
+                        <RunTypeBadge run={row} />
+                      </div>
                     </div>
                   </td>
                   <td>{formatDateTime(row.created_at)}</td>

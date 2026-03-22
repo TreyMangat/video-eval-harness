@@ -47,6 +47,7 @@ def run_benchmark_job(
     requested_models: list[str],
     name: str | None,
     before_runs: list[str],
+    run_type: str,
     ground_truth_path: str | None = None,
 ) -> None:
     from deploy.api_server import _run_benchmark_job
@@ -62,6 +63,7 @@ def run_benchmark_job(
         requested_models,
         name,
         set(before_runs),
+        run_type,
         Path(ground_truth_path) if ground_truth_path else None,
         sync_artifacts=volume.commit,
         persist_job_state=persist_job_state,
@@ -95,6 +97,7 @@ def api():
         requested_models: list[str],
         name: str | None,
         before_runs: set[str],
+        run_type: str,
         ground_truth_path: Path | None,
     ) -> None:
         volume.commit()
@@ -104,6 +107,7 @@ def api():
             requested_models,
             name,
             sorted(before_runs),
+            run_type,
             str(ground_truth_path) if ground_truth_path else None,
         )
 
