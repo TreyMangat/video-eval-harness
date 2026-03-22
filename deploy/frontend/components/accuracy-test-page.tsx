@@ -24,6 +24,7 @@ const DEFAULT_ALLOWED_MODELS = DEFAULT_MODEL_CATALOG.filter((model) => model.tie
 const DEFAULT_SEGMENT_ESTIMATE = 3;
 const API_WARMUP_ATTEMPTS = 12;
 const API_WARMUP_INTERVAL_MS = 5_000;
+const ACCURACY_SUBMIT_WARMUP_ATTEMPTS = 6;
 
 type Phase = "upload" | "label" | "running" | "complete";
 type ServerState = "checking" | "warming" | "ready" | "unavailable";
@@ -236,6 +237,18 @@ export function AccuracyTestPage() {
     [labels]
   );
 
+  function applyHealthPayload(healthPayload: HealthPayload): void {
+    setHealth(healthPayload);
+    setSelectedModels((current) => {
+      const preserved = current
+        .filter((modelName) => healthPayload.limits.allowed_models.includes(modelName))
+        .slice(0, healthPayload.limits.max_models);
+      return preserved.length > 0
+        ? preserved
+        : healthPayload.limits.allowed_models.slice(0, healthPayload.limits.max_models);
+    });
+  }
+
   useEffect(() => {
     if (!interactiveMode) {
       return;
@@ -297,15 +310,7 @@ export function AccuracyTestPage() {
             return;
           }
 
-          setHealth(healthPayload);
-          setSelectedModels((current) => {
-            const preserved = current
-              .filter((modelName) => healthPayload.limits.allowed_models.includes(modelName))
-              .slice(0, healthPayload.limits.max_models);
-            return preserved.length > 0
-              ? preserved
-              : healthPayload.limits.allowed_models.slice(0, healthPayload.limits.max_models);
-          });
+          applyHealthPayload(healthPayload);
           setServerState("ready");
           void loadModelCatalog(healthPayload);
           return;
@@ -520,7 +525,6 @@ export function AccuracyTestPage() {
   async function handleRunAccuracyTest(): Promise<void> {
     if (
       !preview ||
-      serverState !== "ready" ||
       selectedModels.length === 0 ||
       filledLabelCount === 0 ||
       isSubmitting ||
@@ -531,7 +535,7 @@ export function AccuracyTestPage() {
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setStatusMessage("Submitting accuracy test...");
+    setStatusMessage("Preparing server...");
     setCompletedRunId(null);
 
     const groundTruth = labels
@@ -542,6 +546,36 @@ export function AccuracyTestPage() {
       .filter((entry) => entry.label.length > 0);
 
     try {
+      let serverReady = false;
+      setServerState("checking");
+      setWarmupStartTime(Date.now());
+      setWarmupElapsed(0);
+
+      for (let attempt = 0; attempt < ACCURACY_SUBMIT_WARMUP_ATTEMPTS; attempt += 1) {
+        try {
+          const healthPayload = await getHealth();
+          applyHealthPayload(healthPayload);
+          setServerState("ready");
+          serverReady = true;
+          break;
+        } catch {
+          setServerState("warming");
+        }
+
+        setStatusMessage(`Waking up server... (${(attempt + 1) * 5}s)`);
+        if (attempt < ACCURACY_SUBMIT_WARMUP_ATTEMPTS - 1) {
+          await wait(API_WARMUP_INTERVAL_MS);
+        }
+      }
+
+      if (!serverReady) {
+        setServerState("unavailable");
+        setStatusMessage(null);
+        setErrorMessage("Could not reach the benchmark server. Please try again in a minute.");
+        return;
+      }
+
+      setStatusMessage("Submitting accuracy test...");
       const response: BenchmarkJobResponse = await uploadAndBenchmark(
         null,
         selectedModels,
@@ -843,14 +877,13 @@ export function AccuracyTestPage() {
                 className="primary-btn upload-inline-button"
                 onClick={() => void handleRunAccuracyTest()}
                 disabled={
-                  serverState !== "ready" ||
                   isSubmitting ||
                   isJobActive(job) ||
                   selectedModels.length === 0 ||
                   filledLabelCount === 0
                 }
               >
-                {serverState !== "ready" ? "Waiting for server..." : "Run Accuracy Test"}
+                {isSubmitting ? statusMessage ?? "Working..." : "Run Accuracy Test"}
               </button>
 
               {statusMessage ? <p className="upload-inline-status">{statusMessage}</p> : null}
