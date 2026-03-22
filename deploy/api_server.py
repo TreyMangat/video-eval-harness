@@ -347,7 +347,14 @@ def create_app(
                 encoding="utf-8",
             )
             response_payload["preview_id"] = preview_id
-            app.state.sync_artifacts()
+            try:
+                app.state.sync_artifacts()
+            except Exception as exc:
+                print(f"Warning: volume.commit() failed after segment preview save: {exc}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to persist preview data. Please try again.",
+                ) from exc
             return response_payload
         except HTTPException:
             shutil.rmtree(preview_dir, ignore_errors=True)
@@ -379,6 +386,11 @@ def create_app(
             requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
 
         artifacts_path = Path(app.state.artifacts_dir)
+        if preview_id is not None and preview_id.strip() and upload is None:
+            try:
+                app.state.refresh_artifacts()
+            except Exception as exc:
+                print(f"Warning: volume.reload() failed before preview lookup: {exc}")
         preview_state = (
             _load_preview_state(artifacts_path, preview_id)
             if preview_id is not None and preview_id.strip()
@@ -769,6 +781,47 @@ def _build_segment_preview_payload(
     return response_payload, state_payload
 
 
+def _parse_ground_truth_form_value(raw_ground_truth: str) -> Any:
+    try:
+        return json.loads(raw_ground_truth)
+    except json.JSONDecodeError:
+        pass
+
+    compact = raw_ground_truth.strip()
+    if not compact.startswith("[") or not compact.endswith("]"):
+        raise HTTPException(status_code=422, detail="ground_truth must be valid JSON.")
+
+    object_payloads = re.findall(r"\{([^{}]+)\}", compact)
+    if not object_payloads:
+        raise HTTPException(status_code=422, detail="ground_truth must be valid JSON.")
+
+    parsed_entries: list[dict[str, Any]] = []
+    for object_payload in object_payloads:
+        entry: dict[str, Any] = {}
+        for item in [piece.strip() for piece in object_payload.split(",") if piece.strip()]:
+            key, separator, value = item.partition(":")
+            if separator != ":":
+                raise HTTPException(status_code=422, detail="ground_truth must be valid JSON.")
+
+            normalized_key = key.strip().strip("\"'")
+            normalized_value = value.strip().strip("\"'")
+            if normalized_key == "segment_index":
+                try:
+                    entry[normalized_key] = int(normalized_value)
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="ground_truth segment_index values must be integers.",
+                    ) from exc
+            else:
+                entry[normalized_key] = normalized_value
+
+        if entry:
+            parsed_entries.append(entry)
+
+    return parsed_entries
+
+
 def _normalize_ground_truth_payload(
     raw_ground_truth: Optional[str],
     preview_state: Optional[dict[str, Any]] = None,
@@ -776,10 +829,7 @@ def _normalize_ground_truth_payload(
     if raw_ground_truth is None or not raw_ground_truth.strip():
         return None
 
-    try:
-        payload = json.loads(raw_ground_truth)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="ground_truth must be valid JSON.") from exc
+    payload = _parse_ground_truth_form_value(raw_ground_truth)
 
     if not isinstance(payload, list):
         raise HTTPException(status_code=422, detail="ground_truth must be a JSON array.")
@@ -846,10 +896,11 @@ def _normalize_ground_truth_payload(
 
         preview_segment = preview_by_index.get(raw_segment_index)
         if preview_segment is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"ground_truth entry {index + 1} references unknown segment {raw_segment_index}.",
+            print(
+                "Warning: ignoring ground_truth entry "
+                f"{index + 1} because segment {raw_segment_index} was not found in preview state."
             )
+            continue
 
         normalized.append(
             {
