@@ -51,6 +51,7 @@ class GeminiNativeProvider(BaseProvider):
         image_paths: list[str | Path] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.1,
+        video_path: str | Path | None = None,
     ) -> ProviderResponse:
         """Send a generateContent request to Gemini."""
         parts = self._build_parts(prompt, image_paths)

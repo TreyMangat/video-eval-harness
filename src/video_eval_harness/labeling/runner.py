@@ -45,6 +45,8 @@ class LabelingRunner:
         self.prompt_version = prompt_version
         self.max_concurrency = max_concurrency
         self.extra_context = extra_context or {}
+        self.input_mode: str = "frames"  # "frames", "video", or "auto"
+        self.video_paths: dict[str, Path] = {}  # video_id -> source path
 
     def run(
         self,
@@ -316,9 +318,22 @@ class LabelingRunner:
                 **sweep_fields,
             )
 
-        # Prepare image paths
+        # Decide input mode for this model
+        use_video = (
+            self.input_mode == "video"
+            or (self.input_mode == "auto" and model_cfg.supports_video)
+        ) and segment.video_id in self.video_paths
+
+        actual_input_mode = "video" if use_video else "frames"
+
+        # Prepare image paths or video path
         image_paths = None
-        if frames and frames.frame_paths and model_cfg.supports_images:
+        video_path = None
+
+        if use_video:
+            video_path = self.video_paths[segment.video_id]
+            logger.debug(f"Using direct video input for {segment.segment_id} x {model_name}")
+        elif frames and frames.frame_paths and model_cfg.supports_images:
             image_paths = frames.frame_paths
 
         # Call provider
@@ -328,7 +343,20 @@ class LabelingRunner:
             image_paths=image_paths,
             max_tokens=model_cfg.max_tokens,
             temperature=model_cfg.temperature,
+            video_path=video_path,
         )
+
+        # If video input failed, fall back to frames
+        if use_video and not response.success and frames and frames.frame_paths:
+            logger.warning(f"Video input failed for {model_name}, falling back to frames: {response.error}")
+            actual_input_mode = "frames"
+            response = provider.complete(
+                model_id=model_cfg.model_id,
+                prompt=prompt,
+                image_paths=frames.frame_paths if model_cfg.supports_images else None,
+                max_tokens=model_cfg.max_tokens,
+                temperature=model_cfg.temperature,
+            )
 
         if response.success:
             self.cache.set(cache_key, response.text)
@@ -349,5 +377,6 @@ class LabelingRunner:
             estimated_cost=cost,
             prompt_version=self.prompt_version,
             error=response.error if not response.success else None,
+            input_mode=actual_input_mode,
             **sweep_fields,
         )

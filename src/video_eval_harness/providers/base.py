@@ -38,8 +38,9 @@ class BaseProvider(abc.ABC):
         image_paths: list[str | Path] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.1,
+        video_path: str | Path | None = None,
     ) -> ProviderResponse:
-        """Send a completion request with optional images.
+        """Send a completion request with optional images or video.
 
         Args:
             model_id: Provider-specific model identifier.
@@ -47,6 +48,7 @@ class BaseProvider(abc.ABC):
             image_paths: Optional list of local image paths to include.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature.
+            video_path: Optional path to a video file for direct video input.
 
         Returns:
             Standardized ProviderResponse.

@@ -3,6 +3,7 @@ from .local_files import LocalFileAdapter
 from .directory import DirectoryAdapter
 from .build_ai import BuildAIAdapter
 from .ego4d import Ego4DAdapter
+from .epic_kitchens import EpicKitchensAdapter
 from .manifest import ManifestAdapter
 from .ucf101 import UCF101Adapter
 
@@ -13,6 +14,7 @@ __all__ = [
     "DirectoryAdapter",
     "BuildAIAdapter",
     "Ego4DAdapter",
+    "EpicKitchensAdapter",
     "ManifestAdapter",
     "UCF101Adapter",
 ]

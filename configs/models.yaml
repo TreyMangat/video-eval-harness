@@ -16,7 +16,7 @@ models:
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
-    supports_video: false
+    supports_video: true
     notes: "Frontier reasoning model with multimodal support, 1M-token context"
 
   gpt-5.4:
@@ -57,8 +57,8 @@ models:
     max_tokens: 2048
     temperature: 0.1
     supports_images: true
-    supports_video: false
-    notes: "Fast Gemini variant for iteration"
+    supports_video: true
+    notes: "Fast Gemini variant for iteration, supports native video input"
 
   gpt-5.4-mini:
     model_id: "openai/gpt-5.4-mini"

@@ -86,6 +86,9 @@ class SegmentLabelResult(_NoModelNs):
     sampling_method_used: str = ""
     sweep_id: str = ""
 
+    # Input mode: "frames" (extracted images) or "video" (raw video segment)
+    input_mode: str = "frames"
+
     # Meta
     raw_response_text: Optional[str] = None
     parsed_success: bool = False

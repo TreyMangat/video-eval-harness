@@ -50,6 +50,7 @@ class OpenAINativeProvider(BaseProvider):
         image_paths: list[str | Path] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.1,
+        video_path: str | Path | None = None,
     ) -> ProviderResponse:
         """Send a chat completion request to the OpenAI API."""
         messages = self._build_messages(prompt, image_paths)

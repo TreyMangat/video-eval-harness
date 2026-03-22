@@ -307,6 +307,7 @@ def run_benchmark(
     name: Optional[str] = typer.Option(None, "--name", help="Custom run name for the ID (e.g. 'my-experiment')"),
     public: bool = typer.Option(False, "--public", help="Enforce public cost limits (for Modal API)"),
     llm_judge: bool = typer.Option(False, "--llm-judge", help="Use LLM to score agreement (~$0.001/pair)"),
+    input_mode: str = typer.Option("frames", "--input-mode", help="Input mode: frames, video, or auto"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
@@ -314,6 +315,7 @@ def run_benchmark(
 
     Settings are read from benchmark.yaml, with CLI flags as overrides.
     Use --sweep to run a multi-config extraction sweep.
+    Use --input-mode video/auto to send raw video to models that support it.
     Use --dry-run with --sweep to preview the matrix without API calls.
     Use --model-filter to run only a subset of models from the config.
     Use --ground-truth to evaluate against known labels.
@@ -381,6 +383,13 @@ def run_benchmark(
             gt_labels = dataset_adapter.load_ground_truth()
             if gt_labels:
                 console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from UCF101 categories")
+    elif adapter == "epic_kitchens":
+        from .adapters import EpicKitchensAdapter
+        dataset_adapter = EpicKitchensAdapter(data_dir=data_dir or path, manifest=manifest)
+        if gt_labels is None:
+            gt_labels = dataset_adapter.load_ground_truth()
+            if gt_labels:
+                console.print(f"Auto-loaded [cyan]{len(gt_labels)}[/cyan] ground truth labels from EPIC-KITCHENS")
 
     # Load action vocabulary if provided
     vocab_context = _load_action_vocabulary(action_vocabulary) if action_vocabulary else {}
@@ -430,6 +439,7 @@ def run_benchmark(
             bench_cfg, models_cfg, path, settings, storage, cache, prompt_version, window,
             num_frames, artifacts_dir, log_level, filter_models, gt_labels, dataset_adapter,
             vocab_context, max_segments, name, public_mode=public, use_llm_judge=llm_judge,
+            input_mode=input_mode,
         )
 
     cache.close()
@@ -763,6 +773,7 @@ def _run_single(
     run_name: Optional[str] = None,
     public_mode: bool = False,
     use_llm_judge: bool = False,
+    input_mode: str = "frames",
 ) -> None:
     """Standard single-config benchmark run."""
     from .config import setup_providers, validate_run_config
@@ -889,6 +900,9 @@ def _run_single(
         max_concurrency=settings.vbench_max_concurrency,
         extra_context=extra_context,
     )
+    runner.input_mode = input_mode
+    if input_mode in ("video", "auto"):
+        runner.video_paths = {v.video_id: Path(v.source_path) for v in videos}
 
     results = runner.run(run_id, all_segments, frames_map, model_names, public_mode=public_mode)
 
@@ -2072,6 +2086,85 @@ def accuracy_test(
         _run_llm_judge(results)
 
     cache.close()
+
+
+@app.command()
+def optimize_prompts(
+    path: str = typer.Argument(..., help="Path to test videos or dataset directory"),
+    ground_truth: str = typer.Option(..., "--ground-truth", help="Path to ground truth JSON"),
+    base_template: str = typer.Option("action_label", "--template", help="Starting template name"),
+    iterations: int = typer.Option(2, "--iterations", "-n", help="Number of optimization iterations"),
+    model: str = typer.Option("gemini-3-flash", "--model", help="Model to optimize with (use fast model)"),
+    output_dir: str = typer.Option("artifacts/prompt_optimization", "--output", "-o"),
+    artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Auto-optimize prompt templates using accuracy as the objective.
+
+    Analyzes errors from the current template and uses an LLM to generate
+    improved variants. Each iteration: analyze errors, generate 1 variant,
+    report improvement.
+
+    Cost: ~$0.10-0.20 per iteration (meta-prompt only, no benchmark re-run).
+    """
+    _setup(log_level)
+    import json as _json
+
+    from .config import get_settings
+    from .prompting.optimizer import PromptOptimizer
+    from .prompting.templates import BUILTIN_TEMPLATES as TEMPLATES
+    from .providers.openrouter import OpenRouterProvider
+    from .storage import Storage
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        console.print("[red]Prompt optimization requires OPENROUTER_API_KEY.[/red]")
+        raise typer.Exit(1)
+
+    # Get the base template text
+    if base_template not in TEMPLATES:
+        console.print(f"[red]Unknown template: {base_template}. Available: {list(TEMPLATES.keys())}[/red]")
+        raise typer.Exit(1)
+    template_text = TEMPLATES[base_template]
+
+    # Load ground truth
+    gt_labels = _load_ground_truth(ground_truth)
+
+    # Load existing results from the most recent run for error analysis
+    storage = Storage(artifacts_dir)
+    runs = storage.list_runs()
+    if not runs:
+        console.print("[yellow]No existing runs found. Run a benchmark first to generate results for error analysis.[/yellow]")
+        raise typer.Exit(1)
+
+    # Use the most recent run's results
+    latest_run = runs[0]
+    results = storage.get_run_results(latest_run.run_id)
+    console.print(f"Analyzing errors from run: [cyan]{latest_run.run_id}[/cyan] ({len(results)} results)")
+
+    provider = OpenRouterProvider(api_key=settings.openrouter_api_key)
+    optimizer = PromptOptimizer(
+        base_template=template_text,
+        test_results=results,
+        ground_truth=gt_labels,
+        provider=provider,
+    )
+
+    result = optimizer.run_loop(iterations=iterations)
+
+    # Save results
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    (out_dir / "best_template.txt").write_text(result["best_template"], encoding="utf-8")
+    (out_dir / "history.json").write_text(
+        _json.dumps(result["history"], indent=2), encoding="utf-8"
+    )
+
+    console.print(f"\nBest accuracy: [green]{result['best_accuracy']:.0%}[/green]")
+    console.print(f"Results saved to: [cyan]{out_dir}[/cyan]")
+    console.print("  best_template.txt — optimized prompt template")
+    console.print("  history.json — iteration history")
 
 
 @app.command()

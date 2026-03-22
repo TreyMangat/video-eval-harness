@@ -52,9 +52,13 @@ class OpenRouterProvider(BaseProvider):
         image_paths: list[str | Path] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.1,
+        video_path: str | Path | None = None,
     ) -> ProviderResponse:
         """Send a chat completion request to OpenRouter."""
-        messages = self._build_messages(prompt, image_paths)
+        if video_path is not None:
+            messages = self._build_video_messages(prompt, video_path)
+        else:
+            messages = self._build_messages(prompt, image_paths)
 
         payload = {
             "model": model_id,
@@ -138,6 +142,42 @@ class OpenRouterProvider(BaseProvider):
             raise httpx.HTTPStatusError("Server error", request=resp.request, response=resp)
         resp.raise_for_status()
         return resp
+
+    def _build_video_messages(
+        self, prompt: str, video_path: str | Path
+    ) -> list[dict]:
+        """Build messages with a video content part (OpenAI-compatible format).
+
+        Video is sent as a base64-encoded data URL, same format as images but
+        with a ``video/*`` MIME type.  Gemini models on OpenRouter accept this.
+        """
+        video_path = Path(video_path)
+        if not video_path.exists():
+            logger.warning(f"Video not found, falling back to text-only: {video_path}")
+            return [{"role": "user", "content": prompt}]
+
+        suffix = video_path.suffix.lower()
+        mime_type = {
+            ".mp4": "video/mp4",
+            ".webm": "video/webm",
+            ".avi": "video/x-msvideo",
+            ".mov": "video/quicktime",
+        }.get(suffix, "video/mp4")
+
+        with open(video_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        content_parts: list[dict] = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{b64}",
+                },
+            },
+            {"type": "text", "text": prompt},
+        ]
+
+        return [{"role": "user", "content": content_parts}]
 
     def _build_messages(
         self, prompt: str, image_paths: list[str | Path] | None
