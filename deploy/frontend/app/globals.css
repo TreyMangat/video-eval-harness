@@ -1580,12 +1580,12 @@ textarea:focus {
 
 .aggregate-score-track {
   position: relative;
-  min-width: 132px;
+  min-width: 108px;
   overflow: hidden;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(15, 23, 42, 0.82);
-  padding: 7px 12px;
+  padding: 7px 10px;
 }
 
 .aggregate-score-fill {
@@ -1621,7 +1621,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 92px;
+  min-width: 0;
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -1689,9 +1689,13 @@ textarea:focus {
 }
 
 .heatmap-verdict {
-  margin: 12px 0 0;
-  font-size: 13px;
-  color: var(--color-text-secondary, #cbd5e1);
+  font-size: 14px;
+  color: var(--color-text-primary, #f8fafc);
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  background: var(--color-background-secondary, rgba(15, 23, 42, 0.76));
+  border-radius: var(--border-radius-md, 8px);
+  border-left: 3px solid var(--accent-green, #97c459);
 }
 
 .aggregate-recent-section .section-heading {
@@ -2669,13 +2673,16 @@ textarea:focus {
 }
 
 .leaderboard-scroll {
-  overflow-x: auto;
+  width: 100%;
+  max-width: none;
+  overflow-x: hidden;
   overflow-y: visible;
   max-height: none;
 }
 
 .leaderboard-table {
   width: 100%;
+  table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
   height: auto;
@@ -2684,7 +2691,7 @@ textarea:focus {
 
 .leaderboard-table th,
 .leaderboard-table td {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   vertical-align: middle;
 }
@@ -2807,8 +2814,9 @@ textarea:focus {
 }
 
 .leaderboard-scroll {
-  max-width: 900px;
-  overflow-x: auto;
+  width: 100%;
+  max-width: none;
+  overflow-x: hidden;
   overflow-y: visible;
   max-height: none;
 }
