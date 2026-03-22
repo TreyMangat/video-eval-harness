@@ -1,6 +1,7 @@
 import { computeAgreementMatrix, computeSweepMetrics } from "./run-metrics";
 import type {
   LabelResult,
+  ModelSummary,
   RunPayload,
   SegmentSummary,
   SweepMetrics,
@@ -33,11 +34,13 @@ export type CoreComparisonRow = {
   parse_rate: number | null;
   agreement: number | null;
   accuracy: number | null;
+  llm_accuracy: number | null;
   fuzzy_accuracy: number | null;
   confidence: number | null;
   avg_latency_ms: number | null;
   total_cost: number | null;
   stability: number | null;
+  input_mode: string;
 };
 
 export type CostByModelRow = {
@@ -317,6 +320,30 @@ function compareNullableNumbers(
   return descending ? rightValue - leftValue : leftValue - rightValue;
 }
 
+function resolveLlmAccuracy(summary: ModelSummary | undefined): number | null {
+  if (!summary) {
+    return null;
+  }
+  if (typeof summary.llm_accuracy === "number") {
+    return summary.llm_accuracy;
+  }
+  if (typeof summary.accuracy === "number") {
+    return summary.accuracy;
+  }
+  return null;
+}
+
+function resolveInputMode(summary: ModelSummary | undefined): string {
+  const raw = typeof summary?.input_mode === "string" ? summary.input_mode.trim().toLowerCase() : "";
+  if (!raw) {
+    return "frames";
+  }
+  if (raw.includes("video")) {
+    return "video";
+  }
+  return "frames";
+}
+
 export function buildCoreComparisonRows(
   run: RunPayload,
   sweepData: SweepMetrics | null
@@ -333,11 +360,13 @@ export function buildCoreComparisonRows(
         parse_rate: summary?.parse_success_rate ?? null,
         agreement: meanModelAgreement(run.agreement, modelName),
         accuracy: summary?.exact_match_rate ?? null,
+        llm_accuracy: resolveLlmAccuracy(summary),
         fuzzy_accuracy: summary?.fuzzy_match_rate ?? null,
         confidence: summary?.avg_confidence ?? null,
         avg_latency_ms: summary?.avg_latency_ms ?? null,
         total_cost: summary?.total_estimated_cost ?? null,
         stability: stabilityByModel.get(modelName) ?? null,
+        input_mode: resolveInputMode(summary),
       };
     })
     .sort(

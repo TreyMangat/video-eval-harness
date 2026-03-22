@@ -1,0 +1,102 @@
+[
+  {
+    "video_id": "P08_05_take_001",
+    "segment_id": "P08_05_take_001_seg000",
+    "primary_action": "taking spoon"
+  },
+  {
+    "video_id": "P22_07_take_002",
+    "segment_id": "P22_07_take_002_seg000",
+    "primary_action": "taking towel"
+  },
+  {
+    "video_id": "P08_05_put_001",
+    "segment_id": "P08_05_put_001_seg000",
+    "primary_action": "putting scissors away"
+  },
+  {
+    "video_id": "P22_07_put_002",
+    "segment_id": "P22_07_put_002_seg000",
+    "primary_action": "putting salt"
+  },
+  {
+    "video_id": "P08_05_open_001",
+    "segment_id": "P08_05_open_001_seg000",
+    "primary_action": "opening dishwasher"
+  },
+  {
+    "video_id": "P22_07_open_002",
+    "segment_id": "P22_07_open_002_seg000",
+    "primary_action": "opening drawer"
+  },
+  {
+    "video_id": "P08_05_close_001",
+    "segment_id": "P08_05_close_001_seg000",
+    "primary_action": "closing water tap"
+  },
+  {
+    "video_id": "P22_07_close_002",
+    "segment_id": "P22_07_close_002_seg000",
+    "primary_action": "closing trash can"
+  },
+  {
+    "video_id": "P08_05_wash_001",
+    "segment_id": "P08_05_wash_001_seg000",
+    "primary_action": "washing hands"
+  },
+  {
+    "video_id": "P22_07_wash_002",
+    "segment_id": "P22_07_wash_002_seg000",
+    "primary_action": "washing sponge"
+  },
+  {
+    "video_id": "P08_05_cut_001",
+    "segment_id": "P08_05_cut_001_seg000",
+    "primary_action": "cutting bell pepper"
+  },
+  {
+    "video_id": "P22_07_cut_002",
+    "segment_id": "P22_07_cut_002_seg000",
+    "primary_action": "cutting courgette"
+  },
+  {
+    "video_id": "P08_05_mix_001",
+    "segment_id": "P08_05_mix_001_seg000",
+    "primary_action": "mixing corn"
+  },
+  {
+    "video_id": "P22_07_mix_002",
+    "segment_id": "P22_07_mix_002_seg000",
+    "primary_action": "mixing water"
+  },
+  {
+    "video_id": "P08_05_pour_001",
+    "segment_id": "P08_05_pour_001_seg000",
+    "primary_action": "pouring oil"
+  },
+  {
+    "video_id": "P22_07_pour_002",
+    "segment_id": "P22_07_pour_002_seg000",
+    "primary_action": "pouring water"
+  },
+  {
+    "video_id": "P08_05_turn-on_001",
+    "segment_id": "P08_05_turn-on_001_seg000",
+    "primary_action": "turning on tap"
+  },
+  {
+    "video_id": "P22_07_turn-on_002",
+    "segment_id": "P22_07_turn-on_002_seg000",
+    "primary_action": "turning on tap"
+  },
+  {
+    "video_id": "P08_05_peel_001",
+    "segment_id": "P08_05_peel_001_seg000",
+    "primary_action": "peeling carrot"
+  },
+  {
+    "video_id": "P22_07_peel_002",
+    "segment_id": "P22_07_peel_002_seg000",
+    "primary_action": "peeling onion"
+  }
+]

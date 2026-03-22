@@ -239,10 +239,22 @@ function parseSummaryOverrides(raw: unknown): Record<string, Partial<ModelSummar
       }
       const record = value as Record<string, unknown>;
       overrides[modelName] = {
+        accuracy:
+          typeof record.accuracy === "number" ? record.accuracy : null,
         exact_match_rate:
           typeof record.exact_match_rate === "number" ? record.exact_match_rate : null,
         fuzzy_match_rate:
           typeof record.fuzzy_match_rate === "number" ? record.fuzzy_match_rate : null,
+        llm_accuracy:
+          typeof record.llm_accuracy === "number"
+            ? record.llm_accuracy
+            : typeof record.accuracy === "number"
+              ? record.accuracy
+              : null,
+        input_mode:
+          typeof record.input_mode === "string" && record.input_mode.trim()
+            ? record.input_mode
+            : null,
       };
     }
   }
@@ -250,6 +262,8 @@ function parseSummaryOverrides(raw: unknown): Record<string, Partial<ModelSummar
   const groundTruth =
     source.ground_truth_accuracy && typeof source.ground_truth_accuracy === "object"
       ? (source.ground_truth_accuracy as Record<string, unknown>)
+      : source.accuracy_by_model && typeof source.accuracy_by_model === "object"
+        ? (source.accuracy_by_model as Record<string, unknown>)
       : source.accuracy && typeof source.accuracy === "object"
         ? (source.accuracy as Record<string, unknown>)
         : null;
@@ -262,10 +276,33 @@ function parseSummaryOverrides(raw: unknown): Record<string, Partial<ModelSummar
       const record = value as Record<string, unknown>;
       overrides[modelName] = {
         ...(overrides[modelName] ?? {}),
+        accuracy:
+          typeof record.accuracy === "number"
+            ? record.accuracy
+            : overrides[modelName]?.accuracy ?? null,
         exact_match_rate:
           typeof record.exact_match_rate === "number" ? record.exact_match_rate : null,
         fuzzy_match_rate:
           typeof record.fuzzy_match_rate === "number" ? record.fuzzy_match_rate : null,
+      };
+    }
+  }
+
+  const llmAccuracy =
+    source.llm_accuracy && typeof source.llm_accuracy === "object"
+      ? (source.llm_accuracy as Record<string, unknown>)
+      : null;
+
+  if (llmAccuracy) {
+    for (const [modelName, value] of Object.entries(llmAccuracy)) {
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      const record = value as Record<string, unknown>;
+      overrides[modelName] = {
+        ...(overrides[modelName] ?? {}),
+        llm_accuracy:
+          typeof record.llm_accuracy === "number" ? record.llm_accuracy : null,
       };
     }
   }

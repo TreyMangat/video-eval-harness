@@ -227,8 +227,10 @@ export function computeModelSummary(results: LabelResult[], modelName: string): 
     failed_parses: modelResults.length - successful.length,
     parse_success_rate:
       modelResults.length === 0 ? 0 : successful.length / modelResults.length,
+    accuracy: null,
     exact_match_rate: null,
     fuzzy_match_rate: null,
+    llm_accuracy: null,
     avg_latency_ms:
       latencies.length === 0
         ? null
@@ -244,6 +246,7 @@ export function computeModelSummary(results: LabelResult[], modelName: string): 
         ? null
         : confidences.reduce((sum, value) => sum + value, 0) / confidences.length,
     consensus_alignment_rate: null,
+    input_mode: "frames",
   };
 }
 

@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Cell,
   LabelList,
+  ReferenceLine,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -14,13 +15,16 @@ import {
   YAxis,
 } from "recharts";
 
-import {
-  formatLatency,
-  formatMoney,
-  formatPercent,
-  modelColor,
-} from "../lib/analysis";
+import { formatLatency, formatMoney, formatPercent, modelColor } from "../lib/analysis";
 import type { AggregateModelRow } from "./aggregate-dashboard";
+
+type ChartDatum = AggregateModelRow & {
+  agreement_pct: number | null;
+  exact_accuracy_pct: number | null;
+  llm_accuracy_pct: number | null;
+  primary_accuracy_pct: number | null;
+  fill: string;
+};
 
 function tooltipStyle() {
   return {
@@ -111,37 +115,60 @@ function ScatterPoint(props: { cx?: number; cy?: number; fill?: string }) {
   );
 }
 
+function primaryAccuracy(row: AggregateModelRow): number | null {
+  return row.avg_llm_accuracy ?? row.avg_accuracy;
+}
+
 export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
-  const agreementData = [...rows]
-    .filter((row) => row.avg_agreement != null)
-    .map((row) => ({
-      ...row,
-      agreement_pct: (row.avg_agreement ?? 0) * 100,
-      fill: modelColor(row.model_name),
-    }))
+  const chartRows: ChartDatum[] = rows.map((row) => ({
+    ...row,
+    agreement_pct: row.avg_agreement == null ? null : row.avg_agreement * 100,
+    exact_accuracy_pct: row.avg_accuracy == null ? null : row.avg_accuracy * 100,
+    llm_accuracy_pct: row.avg_llm_accuracy == null ? null : row.avg_llm_accuracy * 100,
+    primary_accuracy_pct: primaryAccuracy(row) == null ? null : primaryAccuracy(row)! * 100,
+    fill: modelColor(row.model_name),
+  }));
+
+  const accuracyAgreementScatterData = [...chartRows]
+    .filter(
+      (row): row is ChartDatum & { agreement_pct: number; llm_accuracy_pct: number } =>
+        row.agreement_pct != null && row.llm_accuracy_pct != null
+    )
     .sort(
       (left, right) =>
-        right.agreement_pct - left.agreement_pct || left.model_name.localeCompare(right.model_name)
+        right.llm_accuracy_pct - left.llm_accuracy_pct ||
+        right.agreement_pct - left.agreement_pct ||
+        left.model_name.localeCompare(right.model_name)
     );
 
-  const accuracyAgreementData = [...rows]
-    .filter((row) => row.avg_agreement != null || row.avg_accuracy != null)
-    .map((row) => ({
-      ...row,
-      agreement_pct: row.avg_agreement == null ? null : row.avg_agreement * 100,
-      accuracy_pct: row.avg_accuracy == null ? null : row.avg_accuracy * 100,
-    }));
+  const agreementComparisonData = [...chartRows]
+    .filter((row) => row.agreement_pct != null || row.llm_accuracy_pct != null)
+    .sort(
+      (left, right) =>
+        (right.llm_accuracy_pct ?? right.agreement_pct ?? 0) -
+          (left.llm_accuracy_pct ?? left.agreement_pct ?? 0) ||
+        (right.agreement_pct ?? 0) - (left.agreement_pct ?? 0) ||
+        left.model_name.localeCompare(right.model_name)
+    );
 
-  const latencyData = [...rows]
+  const latencyData = [...chartRows]
     .filter((row) => row.avg_latency_ms != null)
-    .map((row) => ({
-      ...row,
-      fill: modelColor(row.model_name),
-    }))
     .sort(
       (left, right) =>
         (left.avg_latency_ms ?? Number.POSITIVE_INFINITY) -
           (right.avg_latency_ms ?? Number.POSITIVE_INFINITY) ||
+        left.model_name.localeCompare(right.model_name)
+    );
+
+  const costScatterData = [...chartRows]
+    .filter(
+      (row): row is ChartDatum & { primary_accuracy_pct: number } =>
+        row.primary_accuracy_pct != null && row.total_cost > 0
+    )
+    .sort(
+      (left, right) =>
+        right.primary_accuracy_pct - left.primary_accuracy_pct ||
+        left.total_cost - right.total_cost ||
         left.model_name.localeCompare(right.model_name)
     );
 
@@ -151,55 +178,137 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
       .filter((value): value is number => value != null),
     100
   );
-
-  const scatterData = rows
-    .filter(
-      (row): row is AggregateModelRow & { avg_accuracy: number } =>
-        row.avg_accuracy != null && row.total_cost > 0
-    )
-    .map((row) => ({
-      ...row,
-      accuracy_pct: row.avg_accuracy * 100,
-      fill: modelColor(row.model_name),
-    }));
-
-  const scatterXDomain = domainWithPadding(
-    scatterData.map((row) => row.total_cost),
+  const costScatterXDomain = domainWithPadding(
+    costScatterData.map((row) => row.total_cost),
     0.01
   );
-  const scatterYDomain = domainWithPadding(
-    scatterData.map((row) => row.accuracy_pct),
+  const costScatterYDomain = domainWithPadding(
+    costScatterData.map((row) => row.primary_accuracy_pct),
     4
   );
+
   const averageAgreement = average(
     rows.map((row) => row.avg_agreement).filter((value): value is number => value != null)
   );
-  const averageLatency = average(
-    rows.map((row) => row.avg_latency_ms).filter((value): value is number => value != null)
+  const averageAccuracyGap = average(
+    accuracyAgreementScatterData.map((row) => Math.abs(row.llm_accuracy_pct - row.agreement_pct))
   );
 
   return (
     <div className="aggregate-visual-stack">
       <section className="visual-card dashboard-section-card">
         <SectionHeader
-          eyebrow="Agreement Comparison"
-          title="Which models attract the strongest consensus?"
-          description="Average agreement across the loaded run history, with each bar colored by model identity."
+          eyebrow="Transparency"
+          title="AGREEMENT VS ACCURACY"
+          description="Models above the diagonal are quietly correct. Models below are confidently wrong."
         />
 
-        {agreementData.length === 0 ? (
-          <p className="empty-state">No agreement data is available for the loaded runs.</p>
+        {accuracyAgreementScatterData.length === 0 ? (
+          <p className="empty-state">
+            No accuracy data is available in the loaded runs yet. Add a ground-truth or judge-scored
+            run to compare consensus against correctness.
+          </p>
+        ) : (
+          <div className="chart-stage-large">
+            <ResponsiveContainer width="100%" height={360}>
+              <ScatterChart margin={{ top: 16, right: 32, left: 16, bottom: 24 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
+                <XAxis
+                  type="number"
+                  dataKey="agreement_pct"
+                  domain={[0, 100]}
+                  tick={{ fill: "#94a3b8", fontSize: 12 }}
+                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
+                  axisLine={false}
+                  tickLine={false}
+                  label={{
+                    value: "Average agreement",
+                    position: "insideBottom",
+                    offset: -10,
+                    fill: "#94a3b8",
+                  }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="llm_accuracy_pct"
+                  domain={[0, 100]}
+                  tick={{ fill: "#94a3b8", fontSize: 12 }}
+                  tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
+                  axisLine={false}
+                  tickLine={false}
+                  label={{
+                    value: "Average LLM accuracy",
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: -2,
+                    fill: "#94a3b8",
+                  }}
+                />
+                <ReferenceLine
+                  segment={[
+                    { x: 0, y: 0 },
+                    { x: 100, y: 100 },
+                  ]}
+                  stroke="rgba(226, 232, 240, 0.38)"
+                  strokeDasharray="6 6"
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: "4 4" }}
+                  contentStyle={tooltipStyle()}
+                  formatter={(value, name) => [
+                    `${numericValue(value).toFixed(1)}%`,
+                    name === "agreement_pct" ? "Average agreement" : "Average LLM accuracy",
+                  ]}
+                  labelFormatter={(_, payload) =>
+                    payload?.[0] && "payload" in payload[0] && payload[0].payload
+                      ? String((payload[0].payload as { model_name: string }).model_name)
+                      : ""
+                  }
+                />
+                <Scatter data={accuracyAgreementScatterData} shape={<ScatterPoint />}>
+                  <LabelList dataKey="model_name" position="top" fill="#e2e8f0" fontSize={11} />
+                  {accuracyAgreementScatterData.map((entry) => (
+                    <Cell key={entry.model_name} fill={entry.fill} />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {averageAccuracyGap != null ? (
+          <p className="table-note">
+            Across accuracy-aware models, agreement and LLM accuracy differ by{" "}
+            {Math.round(averageAccuracyGap)} points on average.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="visual-card dashboard-section-card">
+        <SectionHeader
+          eyebrow="Agreement Comparison"
+          title="Where does consensus pull away from correctness?"
+          description="Blue bars show average agreement. Green bars show LLM accuracy, so gaps reveal when models agree more than they are actually right."
+        />
+
+        {agreementComparisonData.length === 0 ||
+        agreementComparisonData.every((row) => row.llm_accuracy_pct == null) ? (
+          <p className="empty-state">
+            No accuracy data is available for the loaded models, so the dashboard cannot overlay
+            correctness on top of agreement yet.
+          </p>
         ) : (
           <div className="chart-stage-large">
             <ResponsiveContainer
               width="100%"
-              height={Math.max(220, agreementData.length * 52)}
+              height={Math.max(240, agreementComparisonData.length * 64)}
             >
               <BarChart
-                data={agreementData}
+                data={agreementComparisonData}
                 layout="vertical"
                 margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
-                barCategoryGap={14}
+                barGap={4}
+                barCategoryGap={18}
               >
                 <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
                 <XAxis
@@ -213,7 +322,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                 <YAxis
                   dataKey="model_name"
                   type="category"
-                  width={160}
+                  width={170}
                   tick={{ fill: "#f8fafc", fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
@@ -221,16 +330,31 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                 <Tooltip
                   contentStyle={tooltipStyle()}
                   cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
-                  formatter={(value) => [`${numericValue(value).toFixed(1)}%`, "Avg agreement"]}
+                  formatter={(value, name) => [
+                    `${numericValue(value).toFixed(1)}%`,
+                    name === "agreement_pct" ? "Average agreement" : "LLM accuracy",
+                  ]}
                 />
-                <Bar dataKey="agreement_pct" radius={[0, 12, 12, 0]}>
-                  {agreementData.map((entry) => (
-                    <Cell key={entry.model_name} fill={entry.fill} fillOpacity={0.9} />
-                  ))}
+                <Bar
+                  dataKey="agreement_pct"
+                  name="agreement_pct"
+                  fill="#4c9aff"
+                  fillOpacity={0.92}
+                  radius={[0, 12, 12, 0]}
+                />
+                <Bar
+                  dataKey="llm_accuracy_pct"
+                  name="llm_accuracy_pct"
+                  fill="#22c55e"
+                  fillOpacity={0.58}
+                  radius={[0, 12, 12, 0]}
+                >
                   <LabelList
-                    dataKey="agreement_pct"
+                    dataKey="llm_accuracy_pct"
                     position="right"
-                    formatter={(value: unknown) => `${Math.round(numericValue(value))}%`}
+                    formatter={(value: unknown) =>
+                      value == null ? "" : `${Math.round(numericValue(value))}%`
+                    }
                     fill="#f8fafc"
                     fontSize={12}
                   />
@@ -248,145 +372,73 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
         ) : null}
       </section>
 
-      <div className="analysis-grid two-up">
-        <section className="visual-card dashboard-section-card">
-          <SectionHeader
-            eyebrow="Consensus vs Correctness"
-            title="Where does agreement diverge from accuracy?"
-            description="Two bars per model: blue is agreement, green is accuracy. Big gaps highlight quietly-correct or confidently-wrong models."
-          />
+      <section className="visual-card dashboard-section-card">
+        <SectionHeader
+          eyebrow="Latency Breakdown"
+          title="Which models stay fast across runs?"
+          description="A horizontal latency ranking, colored from fast green through amber to slow red."
+        />
 
-          {accuracyAgreementData.length === 0 ? (
-            <p className="empty-state">Not enough metric data is available for this comparison yet.</p>
-          ) : (
-            <div className="chart-stage">
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart
-                  data={accuracyAgreementData}
-                  margin={{ top: 8, right: 16, left: 0, bottom: 16 }}
-                  barGap={6}
-                  barCategoryGap="22%"
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-                  <XAxis
-                    dataKey="model_name"
-                    tick={{ fill: "#cbd5e1", fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    angle={-18}
-                    textAnchor="end"
-                    height={68}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    tick={{ fill: "#94a3b8", fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle()}
-                    formatter={(value, name) => [
-                      `${numericValue(value).toFixed(1)}%`,
-                      name === "agreement_pct" ? "Avg agreement" : "Avg accuracy",
-                    ]}
-                  />
-                  <Bar
-                    dataKey="agreement_pct"
-                    name="agreement_pct"
-                    fill="#4c9aff"
-                    radius={[8, 8, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="accuracy_pct"
-                    name="accuracy_pct"
-                    fill="#22c55e"
-                    radius={[8, 8, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </section>
-
-        <section className="visual-card dashboard-section-card">
-          <SectionHeader
-            eyebrow="Latency Breakdown"
-            title="Which models stay fast across runs?"
-            description="A horizontal latency ranking, colored from fast green through amber to slow red."
-          />
-
-          {latencyData.length === 0 ? (
-            <p className="empty-state">No latency data is available for the loaded runs.</p>
-          ) : (
-            <div className="chart-stage">
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(240, latencyData.length * 52)}
+        {latencyData.length === 0 ? (
+          <p className="empty-state">No latency data is available for the loaded runs.</p>
+        ) : (
+          <div className="chart-stage">
+            <ResponsiveContainer width="100%" height={Math.max(240, latencyData.length * 52)}>
+              <BarChart
+                data={latencyData}
+                layout="vertical"
+                margin={{ top: 8, right: 28, left: 8, bottom: 8 }}
+                barCategoryGap={14}
               >
-                <BarChart
-                  data={latencyData}
-                  layout="vertical"
-                  margin={{ top: 8, right: 28, left: 8, bottom: 8 }}
-                  barCategoryGap={14}
-                >
-                  <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
-                  <XAxis
-                    type="number"
-                    domain={latencyDomain ?? [0, 1000]}
-                    tick={{ fill: "#94a3b8", fontSize: 12 }}
-                    tickFormatter={(value) => `${Math.round(numericValue(value))}ms`}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    dataKey="model_name"
-                    type="category"
-                    width={160}
-                    tick={{ fill: "#f8fafc", fontSize: 12 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle()}
-                    formatter={(value) => [formatLatency(numericValue(value)), "Avg latency"]}
-                  />
-                  <Bar dataKey="avg_latency_ms" radius={[0, 12, 12, 0]}>
-                    {latencyData.map((entry, index) => (
-                      <Cell
-                        key={entry.model_name}
-                        fill={latencyColor(index, latencyData.length)}
-                        fillOpacity={0.9}
-                      />
-                    ))}
-                    <LabelList
-                      dataKey="avg_latency_ms"
-                      position="right"
-                      formatter={(value: unknown) => `${Math.round(numericValue(value))}ms`}
-                      fill="#f8fafc"
-                      fontSize={12}
+                <CartesianGrid horizontal={false} stroke="rgba(148, 163, 184, 0.1)" />
+                <XAxis
+                  type="number"
+                  domain={latencyDomain ?? [0, 1000]}
+                  tick={{ fill: "#94a3b8", fontSize: 12 }}
+                  tickFormatter={(value) => `${Math.round(numericValue(value))}ms`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  dataKey="model_name"
+                  type="category"
+                  width={160}
+                  tick={{ fill: "#f8fafc", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle()}
+                  formatter={(value) => [formatLatency(numericValue(value)), "Avg latency"]}
+                />
+                <Bar dataKey="avg_latency_ms" radius={[0, 12, 12, 0]}>
+                  {latencyData.map((entry, index) => (
+                    <Cell
+                      key={entry.model_name}
+                      fill={latencyColor(index, latencyData.length)}
+                      fillOpacity={0.9}
                     />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+                  ))}
+                  <LabelList
+                    dataKey="avg_latency_ms"
+                    position="right"
+                    formatter={(value: unknown) => `${Math.round(numericValue(value))}ms`}
+                    fill="#f8fafc"
+                    fontSize={12}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
 
-          {averageLatency != null ? (
-            <p className="table-note">
-              Average latency across loaded models is {formatLatency(averageLatency)}.
-            </p>
-          ) : null}
-        </section>
-      </div>
-
-      {scatterData.length > 1 ? (
+      {costScatterData.length > 1 ? (
         <section className="visual-card dashboard-section-card">
           <SectionHeader
             eyebrow="Cost Efficiency"
             title="Who delivers the best accuracy per dollar?"
-            description="Each dot is a model. Up is better accuracy, left is lower cost."
+            description="Each dot is a model. Up is better verified accuracy, left is lower total cost."
           />
 
           <div className="chart-stage-large">
@@ -396,7 +448,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                 <XAxis
                   type="number"
                   dataKey="total_cost"
-                  domain={scatterXDomain ?? [0, 1]}
+                  domain={costScatterXDomain ?? [0, 1]}
                   tick={{ fill: "#94a3b8", fontSize: 12 }}
                   tickFormatter={(value) => `$${numericValue(value).toFixed(2)}`}
                   axisLine={false}
@@ -404,8 +456,8 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                 />
                 <YAxis
                   type="number"
-                  dataKey="accuracy_pct"
-                  domain={scatterYDomain ?? [0, 100]}
+                  dataKey="primary_accuracy_pct"
+                  domain={costScatterYDomain ?? [0, 100]}
                   tick={{ fill: "#94a3b8", fontSize: 12 }}
                   tickFormatter={(value) => `${Math.round(numericValue(value))}%`}
                   axisLine={false}
@@ -418,7 +470,7 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                     name === "total_cost"
                       ? formatMoney(numericValue(value))
                       : `${numericValue(value).toFixed(1)}%`,
-                    name === "total_cost" ? "Total cost" : "Avg accuracy",
+                    name === "total_cost" ? "Total cost" : "Best available accuracy",
                   ]}
                   labelFormatter={(_, payload) =>
                     payload?.[0] && "payload" in payload[0] && payload[0].payload
@@ -426,9 +478,9 @@ export function AggregateVisuals({ rows }: { rows: AggregateModelRow[] }) {
                       : ""
                   }
                 />
-                <Scatter data={scatterData} shape={<ScatterPoint />}>
+                <Scatter data={costScatterData} shape={<ScatterPoint />}>
                   <LabelList dataKey="model_name" position="top" fill="#e2e8f0" fontSize={11} />
-                  {scatterData.map((entry) => (
+                  {costScatterData.map((entry) => (
                     <Cell key={entry.model_name} fill={entry.fill} />
                   ))}
                 </Scatter>

@@ -26,10 +26,12 @@ export interface AggregateModelRow {
   model_name: string;
   avg_agreement: number | null;
   avg_accuracy: number | null;
+  avg_llm_accuracy: number | null;
   avg_confidence: number | null;
   avg_latency_ms: number | null;
   total_cost: number;
   run_count: number;
+  input_mode: string;
 }
 
 export type AggregateAgreementMatrix = Record<string, Record<string, number | null>>;
@@ -88,6 +90,62 @@ function confidenceClass(value: number | null): string {
   return "confidence-low";
 }
 
+function accuracyClass(value: number | null): string {
+  if (value == null) {
+    return "aggregate-accuracy-chip neutral";
+  }
+  if (value >= 0.8) {
+    return "aggregate-accuracy-chip high";
+  }
+  if (value >= 0.6) {
+    return "aggregate-accuracy-chip mid";
+  }
+  return "aggregate-accuracy-chip low";
+}
+
+function preferredAccuracy(row: AggregateModelRow): number | null {
+  return row.avg_llm_accuracy ?? row.avg_accuracy;
+}
+
+function signalIndicator(row: AggregateModelRow): { label: string; className: string } | null {
+  const accuracy = preferredAccuracy(row);
+  if (accuracy == null || row.avg_agreement == null) {
+    return null;
+  }
+
+  const delta = row.avg_agreement - accuracy;
+  if (delta >= 0.1) {
+    return {
+      label: `⚠ overconfident +${Math.round(delta * 100)} pts`,
+      className: "aggregate-signal-badge warning",
+    };
+  }
+  if (delta <= -0.1) {
+    return {
+      label: `✓ underrated +${Math.round(Math.abs(delta) * 100)} pts`,
+      className: "aggregate-signal-badge positive",
+    };
+  }
+  return null;
+}
+
+function resolveAggregateInputMode(modes: Set<string>): string {
+  if (modes.has("video")) {
+    return "video";
+  }
+  return "frames";
+}
+
+function inputModeLabel(mode: string): string {
+  return mode === "video" ? "🎬 Video" : "🖼️ Frames";
+}
+
+function inputModeClass(mode: string): string {
+  return mode === "video"
+    ? "aggregate-input-mode video"
+    : "aggregate-input-mode frames";
+}
+
 function scoreTone(value: number | null): "high" | "mid" | "low" | "none" {
   if (value == null) {
     return "none";
@@ -115,15 +173,30 @@ function heatColor(value: number): string {
 }
 
 function sortAggregateRows(rows: AggregateModelRow[]): AggregateModelRow[] {
+  const hasAnyLlmAccuracy = rows.some((row) => row.avg_llm_accuracy != null);
   const hasAnyAccuracy = rows.some((row) => row.avg_accuracy != null);
 
   return [...rows].sort((left, right) => {
-    const primaryLeft = hasAnyAccuracy ? left.avg_accuracy : left.avg_agreement;
-    const primaryRight = hasAnyAccuracy ? right.avg_accuracy : right.avg_agreement;
+    const primaryLeft = hasAnyLlmAccuracy
+      ? left.avg_llm_accuracy
+      : hasAnyAccuracy
+        ? left.avg_accuracy
+        : left.avg_agreement;
+    const primaryRight = hasAnyLlmAccuracy
+      ? right.avg_llm_accuracy
+      : hasAnyAccuracy
+        ? right.avg_accuracy
+        : right.avg_agreement;
     const normalizedLeft = primaryLeft ?? Number.NEGATIVE_INFINITY;
     const normalizedRight = primaryRight ?? Number.NEGATIVE_INFINITY;
     if (normalizedLeft !== normalizedRight) {
       return normalizedRight - normalizedLeft;
+    }
+
+    const fallbackAccuracyLeft = preferredAccuracy(left) ?? Number.NEGATIVE_INFINITY;
+    const fallbackAccuracyRight = preferredAccuracy(right) ?? Number.NEGATIVE_INFINITY;
+    if (fallbackAccuracyLeft !== fallbackAccuracyRight) {
+      return fallbackAccuracyRight - fallbackAccuracyLeft;
     }
 
     const agreementLeft = left.avg_agreement ?? Number.NEGATIVE_INFINITY;
@@ -169,10 +242,12 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
     {
       agreement: number[];
       accuracy: number[];
+      llm_accuracy: number[];
       confidence: number[];
       latency: number[];
       total_cost: number;
       run_ids: Set<string>;
+      input_modes: Set<string>;
     }
   >();
 
@@ -182,10 +257,12 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
       const current = byModel.get(row.model_name) ?? {
         agreement: [],
         accuracy: [],
+        llm_accuracy: [],
         confidence: [],
         latency: [],
         total_cost: 0,
         run_ids: new Set<string>(),
+        input_modes: new Set<string>(),
       };
 
       if (row.agreement != null) {
@@ -193,6 +270,9 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
       }
       if (row.accuracy != null) {
         current.accuracy.push(row.accuracy);
+      }
+      if (row.llm_accuracy != null) {
+        current.llm_accuracy.push(row.llm_accuracy);
       }
       if (row.confidence != null) {
         current.confidence.push(row.confidence);
@@ -203,6 +283,7 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
 
       current.total_cost += row.total_cost ?? 0;
       current.run_ids.add(run.run_id);
+      current.input_modes.add(row.input_mode);
       byModel.set(row.model_name, current);
     }
   }
@@ -212,10 +293,12 @@ export function computeAggregateLeaderboard(runs: RunPayload[]): AggregateModelR
       model_name,
       avg_agreement: average(values.agreement),
       avg_accuracy: average(values.accuracy),
+      avg_llm_accuracy: average(values.llm_accuracy),
       avg_confidence: average(values.confidence),
       avg_latency_ms: average(values.latency),
       total_cost: values.total_cost,
       run_count: values.run_ids.size,
+      input_mode: resolveAggregateInputMode(values.input_modes),
     }))
   );
 }
@@ -389,6 +472,8 @@ export function AggregateDashboard({
   const recentRuns = runList.slice(0, 10);
   const aggregateStats = computeAggregateStats(runs);
   const leaderboard = computeAggregateLeaderboard(runs);
+  const hasExactAccuracy = leaderboard.some((row) => row.avg_accuracy != null);
+  const hasLlmAccuracy = leaderboard.some((row) => row.avg_llm_accuracy != null);
   const aggregateAgreementMatrix = computeAggregateAgreementMatrix(runs);
   const totalRuns = runList.length;
   const totalVideos = indexedVideoCount(runList);
@@ -502,8 +587,8 @@ export function AggregateDashboard({
             <p className="section-eyebrow">Cross-Run Leaderboard</p>
             <h3>Which models stay strongest across the loaded run history?</h3>
             <p className="chart-desc">
-              Agreement is shown with an inline score bar, confidence is color-coded, and the run
-              count tells you how much history sits behind each average.
+              The leaderboard now defaults to verified accuracy when it exists, while still making
+              agreement visible so overconfident and underrated models stand out immediately.
             </p>
           </div>
 
@@ -516,8 +601,10 @@ export function AggregateDashboard({
                   <tr>
                     <th>Rank</th>
                     <th>Model</th>
+                    <th>Input Mode</th>
                     <th>Avg Agreement</th>
-                    <th>Avg Accuracy</th>
+                    {hasExactAccuracy ? <th>Avg Accuracy</th> : null}
+                    {hasLlmAccuracy ? <th>LLM Accuracy</th> : null}
                     <th>Avg Confidence</th>
                     <th>Avg Latency</th>
                     <th>Total Cost</th>
@@ -528,6 +615,7 @@ export function AggregateDashboard({
                   {leaderboard.map((row, index) => {
                     const medal = medalClass(index);
                     const agreementTone = scoreTone(row.avg_agreement);
+                    const signal = signalIndicator(row);
                     return (
                       <tr
                         key={row.model_name}
@@ -543,7 +631,15 @@ export function AggregateDashboard({
                             <span>
                               {row.run_count} {row.run_count === 1 ? "run" : "runs"} loaded
                             </span>
+                            {signal ? (
+                              <span className={signal.className}>{signal.label}</span>
+                            ) : null}
                           </div>
+                        </td>
+                        <td>
+                          <span className={inputModeClass(row.input_mode)}>
+                            {inputModeLabel(row.input_mode)}
+                          </span>
                         </td>
                         <td>
                           <div className={`aggregate-score-track ${agreementTone}`}>
@@ -556,7 +652,20 @@ export function AggregateDashboard({
                             </span>
                           </div>
                         </td>
-                        <td>{formatPercent(row.avg_accuracy)}</td>
+                        {hasExactAccuracy ? (
+                          <td>
+                            <span className={accuracyClass(row.avg_accuracy)}>
+                              {formatPercent(row.avg_accuracy)}
+                            </span>
+                          </td>
+                        ) : null}
+                        {hasLlmAccuracy ? (
+                          <td>
+                            <span className={accuracyClass(row.avg_llm_accuracy)}>
+                              {formatPercent(row.avg_llm_accuracy)}
+                            </span>
+                          </td>
+                        ) : null}
                         <td className={confidenceClass(row.avg_confidence)}>
                           {formatConfidence(row.avg_confidence)}
                         </td>
