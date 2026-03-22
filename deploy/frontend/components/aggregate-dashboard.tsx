@@ -616,6 +616,11 @@ export function AggregateDashboard({
                 </>
               )}
             </p>
+            <p className="chart-desc">
+              Aggregate cards and charts use the loaded run payloads from the merged history
+              (committed static exports plus live Modal runs). The Recent Runs strip uses the
+              broader merged run index.
+            </p>
           </div>
         </section>
 

@@ -93,6 +93,19 @@ function modelCostPerSegment(model: ApiModel | undefined, modelName: string): nu
   return fallbackTier(modelName) === "frontier" ? 0.08 : 0.01;
 }
 
+function formatBackendError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : fallback;
+
+  if (message === "Network request to benchmark server failed.") {
+    return "Could not reach the benchmark server. It may be starting up - please try again in 30 seconds.";
+  }
+  if (message.startsWith("Request timed out after")) {
+    return "The benchmark server took too long to respond. It may still be starting up - please try again in 30 seconds.";
+  }
+
+  return message || fallback;
+}
+
 export function UploadZone() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const interactiveMode = isInteractiveMode();
@@ -186,9 +199,7 @@ export function UploadZone() {
           return;
         }
         setHealthStatus("offline");
-        setErrorMessage(
-          error instanceof Error ? error.message : "Interactive backend is unavailable."
-        );
+        setErrorMessage(formatBackendError(error, "Interactive backend is unavailable."));
       }
     }
 
@@ -349,10 +360,13 @@ export function UploadZone() {
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setStatusMessage("Uploading clip...");
+    setStatusMessage("Checking benchmark server...");
     setCompletedBenchmark(null);
 
     try {
+      const healthPayload = await getHealth();
+      setHealth(healthPayload);
+      setStatusMessage("Uploading clip...");
       const response: BenchmarkJobResponse = await uploadAndBenchmark(
         selectedFile,
         selectedModels,
@@ -371,7 +385,8 @@ export function UploadZone() {
       });
       setStatusMessage("Upload complete. Starting benchmark...");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Upload failed.");
+      setStatusMessage(null);
+      setErrorMessage(formatBackendError(error, "Upload failed. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

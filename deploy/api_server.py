@@ -149,6 +149,10 @@ API_PUBLIC_LIMITS = {
     "max_models": len(PUBLIC_MODEL_CATALOG),
     "allowed_models": [str(model["name"]) for model in PUBLIC_MODEL_CATALOG],
 }
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:3000",
+    "https://video-eval-harness-qu4m.vercel.app",
+)
 
 
 def validate_api_public_request(
@@ -179,6 +183,17 @@ def validate_api_public_request(
     return True, None
 
 
+def _configured_allowed_origins() -> list[str]:
+    origins = list(DEFAULT_ALLOWED_ORIGINS)
+    for env_name in ("VBENCH_FRONTEND_URL", "ALLOWED_ORIGIN"):
+        raw_value = os.environ.get(env_name, "")
+        for candidate in raw_value.split(","):
+            origin = candidate.strip()
+            if origin and origin not in origins:
+                origins.append(origin)
+    return origins
+
+
 def create_app(
     artifacts_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     *,
@@ -201,15 +216,11 @@ def create_app(
     app.state.refresh_artifacts = refresh_artifacts or _noop_sync
     app.state.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    allowed_origin = os.environ.get("ALLOWED_ORIGIN", "").strip()
-    allow_origins = ["http://localhost:3000"]
-    if allowed_origin:
-        allow_origins.append(allowed_origin)
-
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allow_origins,
+        allow_origins=_configured_allowed_origins(),
         allow_origin_regex=r"https://.*\.vercel\.app",
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -424,11 +435,17 @@ def _parse_requested_models(raw_models: Optional[str]) -> list[str]:
 
     try:
         payload = json.loads(raw_models)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="models must be valid JSON.") from exc
+    except json.JSONDecodeError:
+        payload = [item.strip() for item in raw_models.split(",") if item.strip()]
+
+    if isinstance(payload, str):
+        payload = [payload]
 
     if not isinstance(payload, list) or not all(isinstance(item, str) for item in payload):
-        raise HTTPException(status_code=422, detail="models must be a JSON array of strings.")
+        raise HTTPException(
+            status_code=422,
+            detail="models must be a JSON array of strings or a comma-separated string.",
+        )
 
     cleaned = [item.strip() for item in payload if item.strip()]
     if not cleaned:
