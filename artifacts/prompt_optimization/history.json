@@ -1,0 +1,14 @@
+[
+  {
+    "iteration": 1,
+    "accuracy_before": 0.5833333333333333,
+    "errors_analyzed": 5,
+    "variant_preview": "You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment ({{ start_time }}s\u2013{{ end_time }}s).\n\nYour job is to identify the single best **primary_action** for the whole segm"
+  },
+  {
+    "iteration": 2,
+    "accuracy_before": 1.0,
+    "errors_analyzed": 2,
+    "variant_preview": "You are analyzing {{ num_frames }} frames from a {{ duration }}-second video segment ({{ start_time }}s\u2013{{ end_time }}s).\n\nYour task is to output ONE JSON object describing the segment. The most impor"
+  }
+]

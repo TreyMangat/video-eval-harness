@@ -2095,76 +2095,168 @@ def optimize_prompts(
     base_template: str = typer.Option("action_label", "--template", help="Starting template name"),
     iterations: int = typer.Option(2, "--iterations", "-n", help="Number of optimization iterations"),
     model: str = typer.Option("gemini-3-flash", "--model", help="Model to optimize with (use fast model)"),
+    adapter: Optional[str] = typer.Option(None, "--adapter", help="Dataset adapter (ucf101, epic_kitchens)"),
+    max_segments: int = typer.Option(12, "--max-segments", help="Max segments for each evaluation run"),
     output_dir: str = typer.Option("artifacts/prompt_optimization", "--output", "-o"),
+    models_file: str = typer.Option(str(DEFAULT_CONFIGS / "models.yaml"), "--models", "-m"),
     artifacts_dir: str = typer.Option(str(DEFAULT_ARTIFACTS), "--artifacts", "-a"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ) -> None:
-    """Auto-optimize prompt templates using accuracy as the objective.
+    """Auto-optimize prompt templates by running real benchmarks.
 
-    Analyzes errors from the current template and uses an LLM to generate
-    improved variants. Each iteration: analyze errors, generate 1 variant,
-    report improvement.
+    Each iteration: analyze errors from the current best template,
+    generate an improved variant via LLM, run a mini-benchmark with it,
+    and keep the winner.
 
-    Cost: ~$0.10-0.20 per iteration (meta-prompt only, no benchmark re-run).
+    Cost: ~$0.15-0.25 per iteration (meta-prompt + mini-benchmark).
     """
     _setup(log_level)
     import json as _json
 
-    from .config import get_settings
+    from .caching import ResponseCache
+    from .config import get_settings, load_models_config, setup_providers, ExtractionConfig, SegmentationConfig
+    from .evaluation.metrics import compute_ground_truth_accuracy
+    from .extraction import FrameExtractor
+    from .labeling import LabelingRunner
     from .prompting.optimizer import PromptOptimizer
-    from .prompting.templates import BUILTIN_TEMPLATES as TEMPLATES
+    from .prompting.templates import BUILTIN_TEMPLATES as TEMPLATES, PromptBuilder
     from .providers.openrouter import OpenRouterProvider
+    from .schemas import RunConfig, VideoMetadata
+    from .segmentation import FixedWindowSegmenter
     from .storage import Storage
+    from .utils.ffmpeg import probe_video
+    from .utils.ids import generate_run_id, generate_video_id
 
     settings = get_settings()
     if not settings.openrouter_api_key:
         console.print("[red]Prompt optimization requires OPENROUTER_API_KEY.[/red]")
         raise typer.Exit(1)
 
-    # Get the base template text
     if base_template not in TEMPLATES:
         console.print(f"[red]Unknown template: {base_template}. Available: {list(TEMPLATES.keys())}[/red]")
         raise typer.Exit(1)
     template_text = TEMPLATES[base_template]
 
-    # Load ground truth
     gt_labels = _load_ground_truth(ground_truth)
-
-    # Load existing results from the most recent run for error analysis
     storage = Storage(artifacts_dir)
-    runs = storage.list_runs()
-    if not runs:
-        console.print("[yellow]No existing runs found. Run a benchmark first to generate results for error analysis.[/yellow]")
+    cache = ResponseCache()
+    models_cfg = load_models_config(models_file)
+
+    if model not in models_cfg:
+        console.print(f"[red]Model {model} not in models.yaml[/red]")
         raise typer.Exit(1)
 
-    # Use the most recent run's results
-    latest_run = runs[0]
-    results = storage.get_run_results(latest_run.run_id)
-    console.print(f"Analyzing errors from run: [cyan]{latest_run.run_id}[/cyan] ({len(results)} results)")
+    active_models = {model: models_cfg[model]}
+    providers = setup_providers(active_models, settings)
 
+    # Ingest videos once for all iterations
+    console.rule("[bold]Ingesting videos[/bold]")
+    if adapter == "ucf101":
+        dataset_adapter = _make_ucf101_adapter(None, path, None, 5)
+        entries = dataset_adapter.list_videos()
+    else:
+        from .adapters import DirectoryAdapter, LocalFileAdapter
+        p = Path(path)
+        entries = (DirectoryAdapter(p) if p.is_dir() else LocalFileAdapter([p])).list_videos()
+
+    videos = []
+    for entry in entries:
+        try:
+            info = probe_video(entry.path)
+            vid = entry.video_id or generate_video_id(entry.path)
+            meta = VideoMetadata(
+                video_id=vid, source_path=str(entry.path.resolve()),
+                filename=entry.path.name, duration_s=info.duration_s,
+                width=info.width, height=info.height, fps=info.fps,
+                codec=info.codec, file_size_bytes=info.file_size_bytes,
+            )
+            storage.save_video(meta)
+            videos.append(meta)
+        except Exception as e:
+            console.print(f"  [red]FAIL[/red] {entry.path.name}: {e}")
+
+    seg_cfg = SegmentationConfig(window_size_s=10.0)
+    segmenter = FixedWindowSegmenter(seg_cfg)
+    all_segments = []
+    for v in videos:
+        segs = segmenter.segment(v)
+        storage.save_segments(segs)
+        all_segments.extend(segs)
+    all_segments = _subsample_segments(all_segments, max_segments)
+    console.print(f"  {len(videos)} videos, {len(all_segments)} segments")
+
+    ext_cfg = ExtractionConfig(num_frames=4)
+    extractor = FrameExtractor(ext_cfg, storage)
+    frames_map = {}
+    for v in videos:
+        for seg in storage.get_segments(v.video_id):
+            try:
+                frames_map[seg.segment_id] = extractor.extract(seg, v.source_path)
+            except Exception:
+                pass
+
+    # Function to evaluate a template variant by running the pipeline
+    eval_counter = [0]
+
+    def evaluate_variant(variant_template: str) -> dict:
+        eval_counter[0] += 1
+        variant_name = f"_opt_v{eval_counter[0]}"
+        prompt_builder = PromptBuilder(templates={variant_name: variant_template})
+        runner = LabelingRunner(
+            providers=providers, models=active_models,
+            prompt_builder=prompt_builder, storage=storage, cache=cache,
+            prompt_version=variant_name, max_concurrency=4,
+        )
+        run_id = generate_run_id(name=f"opt-iter-{eval_counter[0]}")
+        run_cfg = RunConfig(run_id=run_id, models=[model], prompt_version=variant_name)
+        storage.save_run(run_cfg)
+
+        results = runner.run(run_id, all_segments, frames_map, [model])
+        accuracy = compute_ground_truth_accuracy(results, gt_labels)
+        model_acc = accuracy.get(model, {})
+        fuzzy_rate = model_acc.get("fuzzy_match_rate", 0.0)
+        mean_sim = model_acc.get("mean_similarity", 0.0)
+
+        console.print(
+            f"  Variant {eval_counter[0]}: fuzzy={fuzzy_rate:.0%} sim={mean_sim:.3f} "
+            f"({len(results)} results)"
+        )
+        return {"accuracy": fuzzy_rate, "results": results}
+
+    # Evaluate the base template first
+    console.rule("[bold]Evaluating base template[/bold]")
+    base_result = evaluate_variant(template_text)
+    base_accuracy = base_result["accuracy"]
+    console.print(f"  Base template ({base_template}): [cyan]{base_accuracy:.0%}[/cyan]")
+
+    # Run the optimizer with the evaluation function
+    console.rule("[bold]Optimizing[/bold]")
     provider = OpenRouterProvider(api_key=settings.openrouter_api_key)
     optimizer = PromptOptimizer(
         base_template=template_text,
-        test_results=results,
+        test_results=base_result["results"],
         ground_truth=gt_labels,
         provider=provider,
     )
 
-    result = optimizer.run_loop(iterations=iterations)
+    result = optimizer.run_loop(iterations=iterations, evaluate_fn=evaluate_variant)
 
     # Save results
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
     (out_dir / "best_template.txt").write_text(result["best_template"], encoding="utf-8")
-    (out_dir / "history.json").write_text(
-        _json.dumps(result["history"], indent=2), encoding="utf-8"
-    )
+    (out_dir / "history.json").write_text(_json.dumps(result["history"], indent=2), encoding="utf-8")
 
-    console.print(f"\nBest accuracy: [green]{result['best_accuracy']:.0%}[/green]")
+    console.print(f"\nBase accuracy: [yellow]{base_accuracy:.0%}[/yellow]")
+    console.print(f"Best accuracy: [green]{result['best_accuracy']:.0%}[/green]")
+    delta = result["best_accuracy"] - base_accuracy
+    if delta > 0:
+        console.print(f"Improvement: [green]+{delta:.0%}[/green]")
+    else:
+        console.print("No improvement — base template is already optimal for this data.")
     console.print(f"Results saved to: [cyan]{out_dir}[/cyan]")
-    console.print("  best_template.txt — optimized prompt template")
-    console.print("  history.json — iteration history")
+
+    cache.close()
 
 
 @app.command()
