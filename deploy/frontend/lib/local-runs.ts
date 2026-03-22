@@ -472,17 +472,22 @@ export async function listArtifactRuns(dataDir?: string): Promise<RunListItem[]>
 
   const runs = await Promise.all(
     [...runIds].map(async (runId) => {
-      const payload = await loadArtifactRun(runId, dataDir);
-      if (!payload) {
+      try {
+        const payload = await loadArtifactRun(runId, dataDir);
+        if (!payload) {
+          return null;
+        }
+        return {
+          run_id: payload.run_id,
+          created_at: payload.config.created_at,
+          models: payload.models,
+          prompt_version: payload.config.prompt_version,
+          video_ids: payload.config.video_ids,
+        };
+      } catch (error) {
+        console.error(`Skipping corrupt static run ${runId}:`, error);
         return null;
       }
-      return {
-        run_id: payload.run_id,
-        created_at: payload.config.created_at,
-        models: payload.models,
-        prompt_version: payload.config.prompt_version,
-        video_ids: payload.config.video_ids,
-      };
     })
   );
 

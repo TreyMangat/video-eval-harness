@@ -57,15 +57,19 @@ export async function loadRun(
 ): Promise<RunPayload | null> {
   if (isInteractiveMode()) {
     try {
+      const localRun = await loadArtifactRun(runId, dataDir);
+      if (localRun) {
+        return localRun;
+      }
+    } catch (localError) {
+      console.error(`Failed to load local run ${runId}:`, localError);
+    }
+
+    try {
       return await fetchRun(runId);
     } catch (liveError) {
       console.error(`Failed to load live run ${runId}:`, liveError);
-      try {
-        return await loadArtifactRun(runId, dataDir);
-      } catch (localError) {
-        console.error(`Failed to load local run ${runId}:`, localError);
-        return null;
-      }
+      return null;
     }
   }
 
@@ -85,15 +89,19 @@ export async function loadSegmentMedia(
 ): Promise<SegmentMedia | null> {
   if (isInteractiveMode()) {
     try {
+      const localMedia = await loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
+      if (localMedia) {
+        return localMedia;
+      }
+    } catch (localError) {
+      console.error(`Failed to load local segment media for ${runId}/${segmentId}:`, localError);
+    }
+
+    try {
       return await fetchSegmentMedia(runId, segmentId, variantId);
     } catch (liveError) {
       console.error(`Failed to load live segment media for ${runId}/${segmentId}:`, liveError);
-      try {
-        return await loadArtifactSegmentMedia(runId, segmentId, variantId, dataDir);
-      } catch (localError) {
-        console.error(`Failed to load local segment media for ${runId}/${segmentId}:`, localError);
-        return null;
-      }
+      return null;
     }
   }
 

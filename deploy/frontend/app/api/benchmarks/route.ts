@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 
 import { fetchBackend, readBackendJson } from "../../../lib/backend";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const response = await fetchBackend("benchmarks", {
+    const body = await request.formData();
+    const response = await fetchBackend("benchmark", {
       method: "POST",
-      body: JSON.stringify(body),
+      body,
     });
     const data = await readBackendJson(response);
     return NextResponse.json(data, { status: response.status });
