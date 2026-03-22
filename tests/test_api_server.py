@@ -98,6 +98,48 @@ def test_post_benchmark_persists_job_state(client, monkeypatch) -> None:
     }
 
 
+def test_get_job_falls_back_to_external_state_loader(tmp_path) -> None:
+    app = create_app(
+        tmp_path,
+        job_runner=lambda *args, **kwargs: None,
+        job_state_loader=lambda job_id: {
+            "job_id": job_id,
+            "status": "queued",
+            "run_id": None,
+            "error": None,
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/jobs/external-job")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "external-job",
+        "status": "queued",
+        "run_id": None,
+        "error": None,
+    }
+
+
+def test_get_models_returns_all_public_model_tiers(client) -> None:
+    response = client.get("/api/models")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["models"]) == 7
+    assert {model["tier"] for model in payload["models"]} == {"fast", "frontier"}
+    assert {model["name"] for model in payload["models"]} == {
+        "gemini-3-flash",
+        "gpt-5.4-mini",
+        "qwen3.5-27b",
+        "gemini-3.1-pro",
+        "gpt-5.4",
+        "qwen3.5-vl",
+        "llama-4-maverick",
+    }
+
+
 def test_cors_headers_are_present(client) -> None:
     response = client.get(
         "/api/health",

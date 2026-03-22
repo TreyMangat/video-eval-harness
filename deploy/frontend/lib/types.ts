@@ -119,9 +119,13 @@ export type RunListItem = {
 
 export type ModelCatalogItem = {
   name: string;
+  display_name?: string;
   model_id: string;
   provider: string;
   supports_images: boolean;
+  description?: string;
+  tier?: "fast" | "frontier";
+  estimated_cost_per_segment?: number;
   role?: string;
   notes: string;
 };

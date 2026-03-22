@@ -30,6 +30,40 @@ image = (
 )
 
 volume = modal.Volume.from_name("vbench-data", create_if_missing=True)
+job_state_store = modal.Dict.from_name("vbench-job-states", create_if_missing=True)
+
+
+@app.function(
+    image=image,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("openrouter-key")],
+    timeout=1800,
+    memory=1024,
+    cpu=1,
+)
+def run_benchmark_job(
+    job_id: str,
+    upload_path: str,
+    requested_models: list[str],
+    name: str | None,
+    before_runs: list[str],
+) -> None:
+    from deploy.api_server import _run_benchmark_job
+
+    def persist_job_state(job_data: dict[str, object]) -> None:
+        job_state_store.put(job_id, job_data)
+
+    volume.reload()
+    _run_benchmark_job(
+        Path("/data/artifacts"),
+        job_id,
+        Path(upload_path),
+        requested_models,
+        name,
+        set(before_runs),
+        sync_artifacts=volume.commit,
+        persist_job_state=persist_job_state,
+    )
 
 
 @app.function(
@@ -44,8 +78,35 @@ volume = modal.Volume.from_name("vbench-data", create_if_missing=True)
 def api():
     from deploy.api_server import create_app
 
+    def persist_job_state(job_data: dict[str, object]) -> None:
+        job_state_store.put(str(job_data["job_id"]), job_data)
+
+    def load_job_state(job_id: str) -> dict[str, object] | None:
+        payload = job_state_store.get(job_id, None)
+        return payload if isinstance(payload, dict) else None
+
+    def submit_job(
+        artifacts_dir: Path,
+        job_id: str,
+        upload_path: Path,
+        requested_models: list[str],
+        name: str | None,
+        before_runs: set[str],
+    ) -> None:
+        volume.commit()
+        run_benchmark_job.spawn(
+            job_id,
+            str(upload_path),
+            requested_models,
+            name,
+            sorted(before_runs),
+        )
+
     return create_app(
         artifacts_dir="/data/artifacts",
+        job_submitter=submit_job,
+        job_state_loader=load_job_state,
+        job_state_saver=persist_job_state,
         sync_artifacts=volume.commit,
         refresh_artifacts=volume.reload,
     )

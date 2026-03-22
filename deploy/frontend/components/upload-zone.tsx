@@ -16,12 +16,15 @@ import {
 import { DEFAULT_MODEL_CATALOG } from "../lib/model-catalog";
 
 const ACCEPTED_TYPES = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
-const DEFAULT_ALLOWED_MODELS = ["gemini-3-flash", "gpt-5.4-mini", "qwen3.5-27b"];
+const DEFAULT_ALLOWED_MODELS = DEFAULT_MODEL_CATALOG.filter((model) => model.tier === "fast").map(
+  (model) => model.name
+);
+const DEFAULT_SEGMENT_ESTIMATE = 3;
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
   max_clip_s: 60,
   max_file_size_mb: 100,
-  max_models: 3,
-  allowed_models: DEFAULT_ALLOWED_MODELS,
+  max_models: DEFAULT_MODEL_CATALOG.length,
+  allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
 };
 
 type HealthStatus = "static" | "checking" | "ready" | "offline";
@@ -40,20 +43,44 @@ function formatFileSize(file: File): string {
 }
 
 function fallbackModelOptions(): ApiModel[] {
-  return DEFAULT_MODEL_CATALOG.filter((model) =>
-    DEFAULT_ALLOWED_MODELS.includes(model.name)
-  ).map((model) => ({
+  return DEFAULT_MODEL_CATALOG.map((model) => ({
     name: model.name,
-    display_name: model.name,
+    display_name: model.display_name ?? model.name,
     model_id: model.model_id,
     provider: model.provider,
     supports_images: model.supports_images,
-    description: model.notes,
+    description: model.description ?? model.notes,
+    tier: model.tier,
+    estimated_cost_per_segment: model.estimated_cost_per_segment,
   }));
 }
 
 function isJobActive(job: JobState | null): job is JobState {
   return job != null;
+}
+
+function fallbackTier(modelName: string): "fast" | "frontier" {
+  return DEFAULT_MODEL_CATALOG.find((model) => model.name === modelName)?.tier ?? "fast";
+}
+
+function modelTier(model: ApiModel | undefined, modelName?: string): "fast" | "frontier" {
+  if (model?.tier) {
+    return model.tier;
+  }
+  return fallbackTier(modelName ?? model?.name ?? "");
+}
+
+function modelCostPerSegment(model: ApiModel | undefined, modelName: string): number {
+  if (typeof model?.estimated_cost_per_segment === "number") {
+    return model.estimated_cost_per_segment;
+  }
+
+  const fallback = DEFAULT_MODEL_CATALOG.find((entry) => entry.name === modelName);
+  if (typeof fallback?.estimated_cost_per_segment === "number") {
+    return fallback.estimated_cost_per_segment;
+  }
+
+  return fallbackTier(modelName) === "frontier" ? 0.08 : 0.01;
 }
 
 export function UploadZone() {
@@ -76,12 +103,42 @@ export function UploadZone() {
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
   const readyForUpload = interactiveMode && healthStatus === "ready";
+  const modelOptionsByName = useMemo(
+    () => new Map(modelOptions.map((model) => [model.name, model])),
+    [modelOptions]
+  );
+  const fastModels = useMemo(
+    () => modelOptions.filter((model) => modelTier(model) === "fast"),
+    [modelOptions]
+  );
+  const frontierModels = useMemo(
+    () => modelOptions.filter((model) => modelTier(model) === "frontier"),
+    [modelOptions]
+  );
   const selectedFileLabel = useMemo(() => {
     if (!selectedFile) {
       return null;
     }
     return `${selectedFile.name} (${formatFileSize(selectedFile)})`;
   }, [selectedFile]);
+  const estimatedCost = useMemo(
+    () =>
+      selectedModels.reduce((sum, modelName) => {
+        return (
+          sum +
+          DEFAULT_SEGMENT_ESTIMATE *
+            modelCostPerSegment(modelOptionsByName.get(modelName), modelName)
+        );
+      }, 0),
+    [modelOptionsByName, selectedModels]
+  );
+  const hasFrontierSelected = useMemo(
+    () =>
+      selectedModels.some((modelName) =>
+        modelTier(modelOptionsByName.get(modelName), modelName) === "frontier"
+      ),
+    [modelOptionsByName, selectedModels]
+  );
 
   useEffect(() => {
     if (!interactiveMode) {
@@ -97,11 +154,20 @@ export function UploadZone() {
         if (cancelled) {
           return;
         }
+
         setHealth(healthPayload);
         if (Array.isArray(modelPayload.models) && modelPayload.models.length > 0) {
           setModelOptions(modelPayload.models);
+          const preferredSelection = modelPayload.models
+            .filter((model) => modelTier(model) === "fast")
+            .map((model) => model.name)
+            .slice(0, healthPayload.limits.max_models);
           setSelectedModels(
-            modelPayload.models.map((model) => model.name).slice(0, healthPayload.limits.max_models)
+            preferredSelection.length > 0
+              ? preferredSelection
+              : modelPayload.models
+                  .map((model) => model.name)
+                  .slice(0, healthPayload.limits.max_models)
           );
         }
         setHealthStatus("ready");
@@ -220,6 +286,29 @@ export function UploadZone() {
       }
       return [...current, modelName];
     });
+  }
+
+  function renderModelOption(model: ApiModel) {
+    const checked = selectedModels.includes(model.name);
+    return (
+      <label key={model.name} className={`upload-tier-row ${checked ? "active" : ""}`}>
+        <span>
+          <strong>{model.display_name}</strong>
+          <span className="upload-inline-note">{model.description}</span>
+        </span>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggleModel(model.name)}
+          disabled={
+            !readyForUpload ||
+            isSubmitting ||
+            isJobActive(job) ||
+            (!checked && selectedModels.length >= limits.max_models)
+          }
+        />
+      </label>
+    );
   }
 
   async function startBenchmark(): Promise<void> {
@@ -355,8 +444,8 @@ export function UploadZone() {
               <p className="upload-inline-title">Drop a short video clip here</p>
               <p className="upload-inline-copy">or click to browse</p>
               <p className="upload-inline-note">
-                Max {limits.max_clip_s} seconds · Max {limits.max_file_size_mb}MB ·{" "}
-                {limits.max_models} fast-tier models
+                Max {limits.max_clip_s} seconds | Max {limits.max_file_size_mb}MB | up to{" "}
+                {limits.max_models} models
               </p>
               <div className="upload-inline-type-list" aria-label="Supported file types">
                 {ACCEPTED_TYPES.map((type) => (
@@ -376,15 +465,15 @@ export function UploadZone() {
                 <div className="upload-inline-queue-list">
                   <div className="upload-file-pill">
                     <span>{selectedFileLabel}</span>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSelectedFile(null);
-                        }}
-                        aria-label={`Remove ${selectedFile?.name ?? "selected clip"}`}
-                        disabled={isSubmitting || isJobActive(job)}
-                      >
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedFile(null);
+                      }}
+                      aria-label={`Remove ${selectedFile?.name ?? "selected clip"}`}
+                      disabled={isSubmitting || isJobActive(job)}
+                    >
                       x
                     </button>
                   </div>
@@ -405,33 +494,45 @@ export function UploadZone() {
               />
             </label>
 
-            <div className="upload-inline-tier-list">
-              {modelOptions.map((model) => {
-                const checked = selectedModels.includes(model.name);
-                return (
-                  <label
-                    key={model.name}
-                    className={`upload-tier-row ${checked ? "active" : ""}`}
-                  >
-                    <span>
-                      <strong>{model.display_name}</strong>
-                      <span className="upload-inline-note">{model.description}</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleModel(model.name)}
-                      disabled={
-                        !readyForUpload ||
-                        isSubmitting ||
-                        isJobActive(job) ||
-                        (!checked && selectedModels.length >= limits.max_models)
-                      }
-                    />
-                  </label>
-                );
-              })}
+            <div className="upload-model-picker">
+              <section className="upload-model-tier">
+                <div className="upload-tier-heading">
+                  <h3 className="tier-label">
+                    Fast models <span className="tier-badge fast">~$0.01/segment</span>
+                  </h3>
+                </div>
+                <p className="tier-desc">Quick results, lowest cost. Good for testing.</p>
+                <div className="upload-inline-tier-list">
+                  {fastModels.map((model) => renderModelOption(model))}
+                </div>
+              </section>
+
+              <section className="upload-model-tier">
+                <div className="upload-tier-heading">
+                  <h3 className="tier-label">
+                    Frontier models{" "}
+                    <span className="tier-badge frontier">~$0.05-0.10/segment</span>
+                  </h3>
+                </div>
+                <p className="tier-desc">
+                  Higher accuracy, slower, and meaningfully more expensive.
+                </p>
+                <div className="upload-inline-tier-list">
+                  {frontierModels.map((model) => renderModelOption(model))}
+                </div>
+              </section>
             </div>
+
+            <div className="cost-estimate">
+              Estimated cost: ~${estimatedCost.toFixed(2)} for {selectedModels.length} models
+            </div>
+
+            {hasFrontierSelected ? (
+              <p className="cost-warning">
+                Warning: Frontier models are 5-10x more expensive. Estimated cost: ~$
+                {estimatedCost.toFixed(2)}
+              </p>
+            ) : null}
 
             <button
               type="button"

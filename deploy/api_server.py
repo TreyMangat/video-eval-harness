@@ -28,11 +28,12 @@ DEFAULT_ARTIFACTS_DIR = Path(os.environ.get("VBENCH_ARTIFACTS_DIR", str(ROOT / "
 DEFAULT_RUNS_DIR = "runs"
 DEFAULT_JOBS_DIR = "jobs"
 UPLOADS_DIR = "uploads"
+PUBLIC_BENCHMARK_CONFIG = ROOT / "configs" / "benchmark_all_models_optimized.yaml"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ESTIMATED_TIME_S = 90
 
 try:
-    from video_eval_harness.limits import PUBLIC_LIMITS, validate_public_request
+    from video_eval_harness.limits import PUBLIC_LIMITS
 except Exception:  # pragma: no cover - fallback only used if limits.py is unavailable
     PUBLIC_LIMITS = {
         "max_clip_duration_s": 60,
@@ -41,29 +42,6 @@ except Exception:  # pragma: no cover - fallback only used if limits.py is unava
         "max_models": 3,
         "allowed_models": ["gemini-3-flash", "gpt-5.4-mini", "qwen3.5-27b"],
     }
-
-    def validate_public_request(
-        file_size_bytes: int,
-        duration_s: float,
-        requested_models: list[str],
-        num_frames: int = 8,
-    ) -> tuple[bool, Optional[str]]:
-        max_file_size_mb = int(PUBLIC_LIMITS["max_file_size_mb"])
-        max_clip_duration_s = int(PUBLIC_LIMITS["max_clip_duration_s"])
-        max_models = int(PUBLIC_LIMITS["max_models"])
-        allowed_models = {
-            str(model_name) for model_name in PUBLIC_LIMITS["allowed_models"]
-        }
-        if file_size_bytes > max_file_size_mb * 1024 * 1024:
-            return False, f"File too large. Max {max_file_size_mb}MB."
-        if duration_s > max_clip_duration_s:
-            return False, f"Clip too long. Max {max_clip_duration_s}s."
-        if len(requested_models) > max_models:
-            return False, f"Max {max_models} models per run."
-        disallowed = [model_name for model_name in requested_models if model_name not in allowed_models]
-        if disallowed:
-            return False, f"Models not available for public use: {', '.join(disallowed)}"
-        return True, None
 
 
 class JobState(TypedDict):
@@ -74,12 +52,24 @@ class JobState(TypedDict):
 
 
 ArtifactSync = Callable[[], None]
+JobStateLoader = Callable[[str], Optional[JobState]]
+JobStateSaver = Callable[[JobState], None]
 JobRunner = Callable[
-    [Path, str, Path, list[str], Optional[str], set[str], Optional[ArtifactSync]],
+    [
+        Path,
+        str,
+        Path,
+        list[str],
+        Optional[str],
+        set[str],
+        Optional[ArtifactSync],
+        Optional[JobStateSaver],
+    ],
     None,
 ]
+JobSubmitter = Callable[[Path, str, Path, list[str], Optional[str], set[str]], None]
 
-FAST_TIER_MODELS: list[dict[str, Any]] = [
+PUBLIC_MODEL_CATALOG: list[dict[str, Any]] = [
     {
         "name": "gemini-3-flash",
         "display_name": "Gemini 3 Flash",
@@ -87,6 +77,8 @@ FAST_TIER_MODELS: list[dict[str, Any]] = [
         "provider": "openrouter",
         "supports_images": True,
         "description": "Fast Gemini variant for quick multimodal benchmark runs.",
+        "tier": "fast",
+        "estimated_cost_per_segment": 0.01,
     },
     {
         "name": "gpt-5.4-mini",
@@ -95,6 +87,8 @@ FAST_TIER_MODELS: list[dict[str, Any]] = [
         "provider": "openrouter",
         "supports_images": True,
         "description": "Lower-cost GPT-5.4 option for public interactive demos.",
+        "tier": "fast",
+        "estimated_cost_per_segment": 0.01,
     },
     {
         "name": "qwen3.5-27b",
@@ -103,14 +97,93 @@ FAST_TIER_MODELS: list[dict[str, Any]] = [
         "provider": "openrouter",
         "supports_images": True,
         "description": "Fast Qwen variant that keeps demo costs low while staying multimodal.",
+        "tier": "fast",
+        "estimated_cost_per_segment": 0.01,
+    },
+    {
+        "name": "gemini-3.1-pro",
+        "display_name": "Gemini 3.1 Pro",
+        "model_id": "google/gemini-3.1-pro-preview",
+        "provider": "openrouter",
+        "supports_images": True,
+        "description": "Higher-accuracy Gemini tier for stronger label quality.",
+        "tier": "frontier",
+        "estimated_cost_per_segment": 0.08,
+    },
+    {
+        "name": "gpt-5.4",
+        "display_name": "GPT-5.4",
+        "model_id": "openai/gpt-5.4",
+        "provider": "openrouter",
+        "supports_images": True,
+        "description": "Frontier GPT tier with stronger reasoning and structured outputs.",
+        "tier": "frontier",
+        "estimated_cost_per_segment": 0.08,
+    },
+    {
+        "name": "qwen3.5-vl",
+        "display_name": "Qwen 3.5 VL",
+        "model_id": "qwen/qwen3.5-397b-a17b",
+        "provider": "openrouter",
+        "supports_images": True,
+        "description": "Frontier multimodal Qwen tier for broader accuracy comparisons.",
+        "tier": "frontier",
+        "estimated_cost_per_segment": 0.08,
+    },
+    {
+        "name": "llama-4-maverick",
+        "display_name": "Llama 4 Maverick",
+        "model_id": "meta-llama/llama-4-maverick",
+        "provider": "openrouter",
+        "supports_images": True,
+        "description": "Meta's frontier multimodal model for higher-cost benchmark runs.",
+        "tier": "frontier",
+        "estimated_cost_per_segment": 0.08,
     },
 ]
+
+API_PUBLIC_LIMITS = {
+    **PUBLIC_LIMITS,
+    "max_models": len(PUBLIC_MODEL_CATALOG),
+    "allowed_models": [str(model["name"]) for model in PUBLIC_MODEL_CATALOG],
+}
+
+
+def validate_api_public_request(
+    file_size_bytes: int,
+    duration_s: float,
+    requested_models: list[str],
+    num_frames: int = 8,
+) -> tuple[bool, str | None]:
+    """Validate uploads against the public API limits used by the Modal deployment."""
+
+    max_file_size_mb = int(API_PUBLIC_LIMITS["max_file_size_mb"])
+    max_clip_duration_s = int(API_PUBLIC_LIMITS["max_clip_duration_s"])
+    max_models = int(API_PUBLIC_LIMITS["max_models"])
+    max_frames = int(API_PUBLIC_LIMITS.get("max_frames_per_segment", 8))
+    allowed_models = {str(model_name) for model_name in API_PUBLIC_LIMITS["allowed_models"]}
+
+    if file_size_bytes > max_file_size_mb * 1024 * 1024:
+        return False, f"File too large. Max {max_file_size_mb}MB."
+    if duration_s > max_clip_duration_s:
+        return False, f"Clip too long. Max {max_clip_duration_s}s."
+    if len(requested_models) > max_models:
+        return False, f"Max {max_models} models per run."
+    disallowed = [model_name for model_name in requested_models if model_name not in allowed_models]
+    if disallowed:
+        return False, f"Models not available for public use: {', '.join(disallowed)}"
+    if num_frames > max_frames:
+        return False, f"Max {max_frames} frames per segment."
+    return True, None
 
 
 def create_app(
     artifacts_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     *,
     job_runner: Optional[JobRunner] = None,
+    job_submitter: Optional[JobSubmitter] = None,
+    job_state_loader: Optional[JobStateLoader] = None,
+    job_state_saver: Optional[JobStateSaver] = None,
     sync_artifacts: Optional[ArtifactSync] = None,
     refresh_artifacts: Optional[ArtifactSync] = None,
 ) -> FastAPI:
@@ -119,6 +192,9 @@ def create_app(
     app = FastAPI(title="VBench API", version="0.3.0")
     app.state.artifacts_dir = Path(artifacts_dir)
     app.state.job_runner = job_runner or _run_benchmark_job
+    app.state.job_submitter = job_submitter
+    app.state.job_state_loader = job_state_loader
+    app.state.job_state_saver = job_state_saver
     app.state.sync_artifacts = sync_artifacts or _noop_sync
     app.state.refresh_artifacts = refresh_artifacts or _noop_sync
     app.state.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -142,16 +218,16 @@ def create_app(
             "status": "ok",
             "version": "0.3.0",
             "limits": {
-                "max_clip_s": int(PUBLIC_LIMITS["max_clip_duration_s"]),
-                "max_file_size_mb": int(PUBLIC_LIMITS["max_file_size_mb"]),
-                "max_models": int(PUBLIC_LIMITS["max_models"]),
-                "allowed_models": list(PUBLIC_LIMITS["allowed_models"]),
+                "max_clip_s": int(API_PUBLIC_LIMITS["max_clip_duration_s"]),
+                "max_file_size_mb": int(API_PUBLIC_LIMITS["max_file_size_mb"]),
+                "max_models": int(API_PUBLIC_LIMITS["max_models"]),
+                "allowed_models": list(API_PUBLIC_LIMITS["allowed_models"]),
             },
         }
 
     @app.get("/api/models")
     async def models() -> dict[str, list[dict[str, Any]]]:
-        return {"models": FAST_TIER_MODELS}
+        return {"models": PUBLIC_MODEL_CATALOG}
 
     @app.get("/api/runs")
     async def list_runs() -> list[dict[str, Any]]:
@@ -185,7 +261,7 @@ def create_app(
     ) -> dict[str, Any]:
         requested_models = _parse_requested_models(models)
         if not requested_models:
-            requested_models = list(PUBLIC_LIMITS["allowed_models"])
+            requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
 
         upload_name = Path(video.filename or "upload.mp4").name
         if Path(upload_name).suffix.lower() not in ALLOWED_SUFFIXES:
@@ -203,7 +279,7 @@ def create_app(
             file_size_bytes = await _save_upload_file(
                 video,
                 upload_path,
-                int(PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024,
+                int(API_PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024,
             )
             video_info = probe_video(upload_path)
         except HTTPException:
@@ -216,7 +292,7 @@ def create_app(
                 detail=f"Unable to read uploaded video: {exc}",
             ) from exc
 
-        is_valid, error_message = validate_public_request(
+        is_valid, error_message = validate_api_public_request(
             file_size_bytes=file_size_bytes,
             duration_s=video_info.duration_s,
             requested_models=requested_models,
@@ -231,17 +307,40 @@ def create_app(
             job_id,
             "queued",
             sync_artifacts=app.state.sync_artifacts,
+            persist_job_state=app.state.job_state_saver,
         )
-        background_tasks.add_task(
-            app.state.job_runner,
-            Path(app.state.artifacts_dir),
-            job_id,
-            upload_path,
-            requested_models,
-            _normalize_name(name),
-            _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
-            app.state.sync_artifacts,
-        )
+        try:
+            if app.state.job_submitter is not None:
+                app.state.job_submitter(
+                    Path(app.state.artifacts_dir),
+                    job_id,
+                    upload_path,
+                    requested_models,
+                    _normalize_name(name),
+                    _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
+                )
+            else:
+                background_tasks.add_task(
+                    app.state.job_runner,
+                    Path(app.state.artifacts_dir),
+                    job_id,
+                    upload_path,
+                    requested_models,
+                    _normalize_name(name),
+                    _existing_run_ids(_runs_dir(Path(app.state.artifacts_dir))),
+                    app.state.sync_artifacts,
+                    app.state.job_state_saver,
+                )
+        except Exception as exc:
+            _save_job(
+                Path(app.state.artifacts_dir),
+                job_id,
+                "failed",
+                error=f"Unable to start benchmark job: {exc}",
+                sync_artifacts=app.state.sync_artifacts,
+                persist_job_state=app.state.job_state_saver,
+            )
+            raise HTTPException(status_code=500, detail="Failed to start benchmark job.") from exc
 
         return {
             "job_id": job_id,
@@ -253,6 +352,8 @@ def create_app(
     async def get_job(job_id: str) -> dict[str, Any]:
         app.state.refresh_artifacts()
         job = _load_job(Path(app.state.artifacts_dir), job_id)
+        if job is None and app.state.job_state_loader is not None:
+            job = app.state.job_state_loader(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Unknown job ID.")
         return job
@@ -276,7 +377,7 @@ async def _save_upload_file(
             if size > max_bytes:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"File too large. Max {int(PUBLIC_LIMITS['max_file_size_mb'])}MB.",
+                    detail=f"File too large. Max {int(API_PUBLIC_LIMITS['max_file_size_mb'])}MB.",
                 )
             handle.write(chunk)
     await upload.close()
@@ -338,6 +439,7 @@ def _save_job(
     run_id: Optional[str] = None,
     error: Optional[str] = None,
     sync_artifacts: Optional[ArtifactSync] = None,
+    persist_job_state: Optional[JobStateSaver] = None,
 ) -> JobState:
     job_data: JobState = {
         "job_id": job_id,
@@ -349,6 +451,8 @@ def _save_job(
         json.dumps(job_data),
         encoding="utf-8",
     )
+    if persist_job_state is not None:
+        persist_job_state(job_data)
     if sync_artifacts is not None:
         sync_artifacts()
     return job_data
@@ -394,12 +498,14 @@ def _run_benchmark_job(
     name: Optional[str],
     before_runs: set[str],
     sync_artifacts: Optional[ArtifactSync] = None,
+    persist_job_state: Optional[JobStateSaver] = None,
 ) -> None:
     _save_job(
         artifacts_dir,
         job_id,
         "running",
         sync_artifacts=sync_artifacts,
+        persist_job_state=persist_job_state,
     )
     run_id: Optional[str] = None
 
@@ -411,13 +517,13 @@ def _run_benchmark_job(
             "run-benchmark",
             str(upload_path),
             "--config",
-            str(ROOT / "configs" / "benchmark_fast.yaml"),
+            str(PUBLIC_BENCHMARK_CONFIG),
             "--models",
             str(ROOT / "configs" / "models.yaml"),
             "--model-filter",
             ",".join(requested_models),
             "--max-segments",
-            str(PUBLIC_LIMITS.get("max_segments", 6)),
+            str(API_PUBLIC_LIMITS.get("max_segments", 6)),
             "--public",
             "--artifacts",
             str(artifacts_dir),
@@ -457,6 +563,7 @@ def _run_benchmark_job(
                 "failed",
                 error=_command_error(stdout_text, stderr_text),
                 sync_artifacts=sync_artifacts,
+                persist_job_state=persist_job_state,
             )
             return
 
@@ -471,6 +578,7 @@ def _run_benchmark_job(
                 "failed",
                 error="Benchmark completed but the run ID could not be detected.",
                 sync_artifacts=sync_artifacts,
+                persist_job_state=persist_job_state,
             )
             return
 
@@ -480,6 +588,7 @@ def _run_benchmark_job(
             "complete",
             run_id=run_id,
             sync_artifacts=sync_artifacts,
+            persist_job_state=persist_job_state,
         )
     except Exception as exc:  # pragma: no cover - exercised through API behavior
         _save_job(
@@ -489,6 +598,7 @@ def _run_benchmark_job(
             run_id=run_id,
             error=str(exc),
             sync_artifacts=sync_artifacts,
+            persist_job_state=persist_job_state,
         )
     finally:
         shutil.rmtree(upload_path.parent, ignore_errors=True)

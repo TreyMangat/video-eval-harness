@@ -502,6 +502,7 @@ class TestCaching:
             def build_key(self, *, supports_video: bool = True) -> str:
                 model_cfg = type("ModelCfg", (), {"supports_video": supports_video})()
                 segment = type("Segment", (), {"video_id": "vid-1"})()
+                _ = model_cfg, segment
                 return cache.make_key("model-a", "prompt123", "input456")
 
         frames_key = FakeRunner("frames").build_key()

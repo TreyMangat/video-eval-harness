@@ -18,6 +18,8 @@ export type ApiModel = {
   provider: string;
   supports_images: boolean;
   description: string;
+  tier?: "fast" | "frontier";
+  estimated_cost_per_segment?: number;
 };
 
 export type BenchmarkJobResponse = {

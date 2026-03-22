@@ -16,11 +16,11 @@ export default function NewBenchmarkPage() {
           <p className="section-eyebrow">New Benchmark</p>
           <h1 className="run-title">Upload a clip and launch a fresh run.</h1>
           <p className="chart-desc">
-            Pick up to three fast-tier models, submit a short clip, and we&apos;ll route you to the
-            report as soon as the benchmark finishes.
+            Mix fast and frontier models, preview the estimated spend live, and we&apos;ll route
+            you to the report as soon as the benchmark finishes.
           </p>
         </div>
-        <div className="aggregate-hero-actions">
+        <div className="analysis-actions">
           <Link href="/" className="ghost-btn">
             Back to Dashboard
           </Link>
