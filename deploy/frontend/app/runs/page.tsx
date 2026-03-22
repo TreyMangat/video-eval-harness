@@ -1,5 +1,5 @@
 import { TopNav } from "../../components/navigation";
-import { RunsTable } from "../../components/runs-table";
+import { RunsTable, type RunsTableRow } from "../../components/runs-table";
 import {
   buildCoreComparisonRows,
   displayRunName,
@@ -15,6 +15,31 @@ function readFirst(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function buildRunsTableRow(
+  run: {
+    run_id: string;
+    created_at: string;
+    models: string[];
+    video_ids: string[];
+  },
+  dataDir: string | undefined,
+  options?: {
+    bestAgreement?: number | null;
+    bestModelName?: string | null;
+  }
+): RunsTableRow {
+  return {
+    run_id: run.run_id,
+    display_name: displayRunName(run.run_id, run.created_at),
+    created_at: run.created_at,
+    models: run.models,
+    video_names: run.video_ids.map((videoId) => displayVideoName(videoId)),
+    best_agreement: options?.bestAgreement ?? null,
+    best_model_name: options?.bestModelName ?? null,
+    data_dir: dataDir,
+  };
+}
+
 export default async function RunsPage({
   searchParams,
 }: {
@@ -23,8 +48,8 @@ export default async function RunsPage({
   const resolvedSearchParams = await searchParams;
   const dataDir = readFirst(resolvedSearchParams.dataDir) ?? process.env.VBENCH_RUNS_DIR;
   const runs = await listRuns(dataDir);
-  const rows = (
-    await Promise.all(
+  const rows: RunsTableRow[] = (
+    await Promise.allSettled(
       runs.map(async (run) => {
         const payload = await loadRun(run.run_id, dataDir);
         const comparisonRows = payload
@@ -32,22 +57,30 @@ export default async function RunsPage({
           : [];
         const bestRow = comparisonRows[0] ?? null;
 
-        return {
-          run_id: run.run_id,
-          display_name: displayRunName(run.run_id, run.created_at),
-          created_at: run.created_at,
-          models: run.models,
-          video_names: run.video_ids.map((videoId) => displayVideoName(videoId)),
-          best_agreement: bestRow?.agreement ?? null,
-          best_model_name: bestRow?.model_name ?? null,
-          data_dir: dataDir,
-        };
+        return buildRunsTableRow(run, dataDir, {
+          bestAgreement: bestRow?.agreement ?? null,
+          bestModelName: bestRow?.model_name ?? null,
+        });
       })
     )
-  ).sort(
-    (left, right) =>
-      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
-  );
+  )
+    .flatMap((result, index) => {
+      if (result.status === "fulfilled") {
+        return [result.value];
+      }
+
+      const fallbackRun = runs[index];
+      if (!fallbackRun) {
+        return [];
+      }
+
+      console.error(`Failed to build runs-table row for ${fallbackRun.run_id}:`, result.reason);
+      return [buildRunsTableRow(fallbackRun, dataDir)];
+    })
+    .sort(
+      (left, right) =>
+        new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    );
 
   return (
     <main className="analysis-shell">

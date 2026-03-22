@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import {
   fetchModels,
+  fetchRun,
   getHealth,
   isInteractiveMode,
   pollJob,
@@ -32,6 +33,15 @@ type JobState = {
   jobId: string;
   status: "queued" | "running";
   estimatedTimeS: number;
+  modelCount: number;
+  stage: string | null;
+  progress: string | null;
+};
+
+type CompletedBenchmark = {
+  runId: string;
+  modelCount: number;
+  segmentCount: number | null;
 };
 
 function isAcceptedFile(file: File): boolean {
@@ -84,7 +94,6 @@ function modelCostPerSegment(model: ApiModel | undefined, modelName: string): nu
 }
 
 export function UploadZone() {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const interactiveMode = isInteractiveMode();
   const [healthStatus, setHealthStatus] = useState<HealthStatus>(
@@ -100,6 +109,7 @@ export function UploadZone() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [job, setJob] = useState<JobState | null>(null);
+  const [completedBenchmark, setCompletedBenchmark] = useState<CompletedBenchmark | null>(null);
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
   const readyForUpload = interactiveMode && healthStatus === "ready";
@@ -194,8 +204,7 @@ export function UploadZone() {
     }
 
     let cancelled = false;
-    const intervalId = window.setInterval(() => {
-      void (async () => {
+    const pollCurrentJob = async (): Promise<void> => {
         try {
           const jobStatus = await pollJob(job.jobId);
           if (cancelled) {
@@ -203,14 +212,29 @@ export function UploadZone() {
           }
 
           if (jobStatus.status === "complete" && jobStatus.run_id) {
-            setStatusMessage("Opening results...");
+            let segmentCount: number | null = null;
+            try {
+              const run = await fetchRun(jobStatus.run_id);
+              if (!cancelled) {
+                segmentCount = run.segments.length;
+              }
+            } catch (error) {
+              console.error("Failed to load completed run payload:", error);
+            }
+
             setJob(null);
-            router.push(`/report/${jobStatus.run_id}`);
+            setCompletedBenchmark({
+              runId: jobStatus.run_id,
+              modelCount: job.modelCount,
+              segmentCount,
+            });
+            setStatusMessage("Benchmark complete.");
             return;
           }
 
           if (jobStatus.status === "failed") {
             setJob(null);
+            setCompletedBenchmark(null);
             setErrorMessage(jobStatus.error || "Benchmark failed.");
             return;
           }
@@ -220,24 +244,30 @@ export function UploadZone() {
               ? {
                   ...current,
                   status: jobStatus.status === "queued" ? "queued" : "running",
+                  stage: jobStatus.stage ?? current.stage,
+                  progress: jobStatus.progress ?? current.progress,
                 }
               : current
           );
-          setStatusMessage("Running benchmark...");
+          setStatusMessage(jobStatus.progress || "Running benchmark...");
         } catch (error) {
           if (!cancelled) {
             setJob(null);
             setErrorMessage(error instanceof Error ? error.message : "Failed to poll job status.");
           }
         }
-      })();
+    };
+
+    void pollCurrentJob();
+    const intervalId = window.setInterval(() => {
+      void pollCurrentJob();
     }, 5000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [job, router]);
+  }, [job]);
 
   function updateSelectedFile(candidateFiles: FileList | File[]): void {
     const files = Array.from(candidateFiles);
@@ -256,6 +286,7 @@ export function UploadZone() {
     setSelectedFile(file);
     setErrorMessage(null);
     setStatusMessage(null);
+    setCompletedBenchmark(null);
   }
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>): void {
@@ -319,6 +350,7 @@ export function UploadZone() {
     setIsSubmitting(true);
     setErrorMessage(null);
     setStatusMessage("Uploading clip...");
+    setCompletedBenchmark(null);
 
     try {
       const response: BenchmarkJobResponse = await uploadAndBenchmark(
@@ -330,8 +362,14 @@ export function UploadZone() {
         jobId: response.job_id,
         status: response.status === "queued" ? "queued" : "running",
         estimatedTimeS: response.estimated_time_s,
+        modelCount: selectedModels.length,
+        stage: response.status === "queued" ? "queued" : "preparing",
+        progress:
+          response.status === "queued"
+            ? "Upload received. Waiting for a worker..."
+            : "Preparing benchmark...",
       });
-      setStatusMessage("Running benchmark...");
+      setStatusMessage("Upload complete. Starting benchmark...");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -550,20 +588,46 @@ export function UploadZone() {
             </button>
 
             {isJobActive(job) ? (
-              <div className="info-banner upload-inline-progress" aria-live="polite">
-                <span className="upload-spinner" aria-hidden="true" />
-                <div>
-                  <strong>Running benchmark... ~{job.estimatedTimeS} seconds</strong>
-                  <p>
+              <div className="benchmark-progress" aria-live="polite">
+                <span className="progress-spinner upload-spinner" aria-hidden="true" />
+                <div className="progress-info">
+                  <strong>
                     {job.status === "queued"
-                      ? "Your clip is queued in Modal."
-                      : "Polling the backend every 5 seconds until results are ready."}
+                      ? "Benchmark queued..."
+                      : `Running benchmark... ~${job.estimatedTimeS} seconds`}
+                  </strong>
+                  <p className="progress-stage">{job.progress || "Starting..."}</p>
+                  <p className="progress-hint">
+                    {job.status === "queued"
+                      ? "Waiting for a Modal worker to start processing your clip."
+                      : "This usually takes 60-120 seconds."}
                   </p>
                 </div>
               </div>
             ) : null}
 
-            {statusMessage ? <p className="upload-inline-status">{statusMessage}</p> : null}
+            {completedBenchmark ? (
+              <div className="benchmark-complete" aria-live="polite">
+                <div className="complete-icon">✓</div>
+                <div className="complete-copy">
+                  <h3>Benchmark complete!</h3>
+                  <p>
+                    {completedBenchmark.modelCount} models analyzed{" "}
+                    {completedBenchmark.segmentCount ?? DEFAULT_SEGMENT_ESTIMATE} segments.
+                  </p>
+                </div>
+                <Link
+                  href={`/report/${completedBenchmark.runId}`}
+                  className="view-report-btn"
+                >
+                  View Report →
+                </Link>
+              </div>
+            ) : null}
+
+            {statusMessage && !completedBenchmark ? (
+              <p className="upload-inline-status">{statusMessage}</p>
+            ) : null}
             {errorMessage ? <p className="upload-inline-error">{errorMessage}</p> : null}
           </div>
         </div>

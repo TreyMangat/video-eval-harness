@@ -32,16 +32,22 @@ export type JobStatusResponse = {
   status: "queued" | "running" | "complete" | "failed";
   run_id: string | null;
   error: string | null;
+  stage?: string | null;
+  progress?: string | null;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+function getApiBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_API_URL || "";
+}
 
 function buildApiUrl(path: string): string {
-  if (!API_URL) {
+  const apiUrl = getApiBaseUrl();
+
+  if (!apiUrl) {
     throw new Error("Interactive mode is not configured.");
   }
 
-  return new URL(path, API_URL.endsWith("/") ? API_URL : `${API_URL}/`).toString();
+  return new URL(path, apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`).toString();
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -58,7 +64,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export function isInteractiveMode(): boolean {
-  return API_URL.length > 0;
+  return getApiBaseUrl().length > 0;
 }
 
 export async function getHealth(): Promise<HealthPayload> {

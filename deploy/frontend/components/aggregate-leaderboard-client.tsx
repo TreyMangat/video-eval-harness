@@ -13,7 +13,6 @@ import type { AggregateModelRow } from "./aggregate-dashboard";
 
 type SortKey =
   | "model_name"
-  | "input_mode"
   | "avg_agreement"
   | "avg_accuracy"
   | "avg_llm_accuracy"
@@ -96,16 +95,6 @@ function scoreTone(value: number | null): "high" | "mid" | "low" | "none" {
   return "low";
 }
 
-function inputModeLabel(mode: string): string {
-  return mode === "video" ? "Video" : "Frames";
-}
-
-function inputModeClass(mode: string): string {
-  return mode === "video"
-    ? "aggregate-input-mode video"
-    : "aggregate-input-mode frames";
-}
-
 function medalClass(index: number): string {
   if (index === 0) {
     return "medal-gold";
@@ -144,7 +133,7 @@ function defaultSortKey(rows: AggregateModelRow[]): SortKey {
 }
 
 function defaultDirectionFor(key: SortKey): SortDirection {
-  if (key === "model_name" || key === "input_mode") {
+  if (key === "model_name") {
     return "asc";
   }
   if (key === "avg_latency_ms" || key === "total_cost") {
@@ -180,16 +169,6 @@ function compareRows(
     return sortDirection === "asc"
       ? left.model_name.localeCompare(right.model_name)
       : right.model_name.localeCompare(left.model_name);
-  }
-
-  if (sortKey === "input_mode") {
-    const inputModeCompare =
-      sortDirection === "asc"
-        ? inputModeLabel(left.input_mode).localeCompare(inputModeLabel(right.input_mode))
-        : inputModeLabel(right.input_mode).localeCompare(inputModeLabel(left.input_mode));
-    if (inputModeCompare !== 0) {
-      return inputModeCompare;
-    }
   }
 
   const leftValue =
@@ -327,15 +306,6 @@ export function AggregateLeaderboardClient({
             </th>
             <th>
               <SortableHeader
-                label="Input Mode"
-                sortKey="input_mode"
-                activeKey={sortKey}
-                direction={sortDirection}
-                onSort={handleSort}
-              />
-            </th>
-            <th>
-              <SortableHeader
                 label="Avg Agreement"
                 sortKey="avg_agreement"
                 activeKey={sortKey}
@@ -430,11 +400,6 @@ export function AggregateLeaderboardClient({
                     </span>
                     {signal ? <span className={signal.className}>{signal.label}</span> : null}
                   </div>
-                </td>
-                <td>
-                  <span className={inputModeClass(row.input_mode)}>
-                    {inputModeLabel(row.input_mode)}
-                  </span>
                 </td>
                 <td>
                   <div className={`aggregate-score-track ${agreementTone}`}>
