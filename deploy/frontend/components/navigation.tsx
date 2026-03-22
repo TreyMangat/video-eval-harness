@@ -17,7 +17,7 @@ export function TopNav({
   active,
   runSelector,
 }: {
-  active: "dashboard" | "runs" | "compare";
+  active: "dashboard" | "runs" | "compare" | "new";
   runSelector?: RunSelectorConfig;
 }) {
   const router = useRouter();
@@ -57,11 +57,15 @@ export function TopNav({
           <Link href="/compare" className={`mode-btn ${active === "compare" ? "active" : ""}`}>
             Compare
           </Link>
+          <Link href="/new" className={`mode-btn ${active === "new" ? "active" : ""}`}>
+            New Benchmark
+          </Link>
         </nav>
         {runSelector ? (
           <label className="top-run-select">
             <span>Run</span>
             <select
+              className="run-selector"
               aria-label="Select run"
               value={runSelector.selectedRunId}
               onChange={(event) => handleRunChange(event.target.value)}

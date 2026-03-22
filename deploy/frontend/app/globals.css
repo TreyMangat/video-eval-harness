@@ -51,6 +51,12 @@ textarea {
   padding: 11px 12px;
 }
 
+.run-selector option,
+select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -1322,6 +1328,39 @@ textarea:focus {
   margin-bottom: 22px;
 }
 
+.aggregate-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.aggregate-hero-copy {
+  display: grid;
+  gap: 12px;
+}
+
+.aggregate-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.aggregate-hero-note {
+  margin: 0;
+  color: #dbeafe;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.aggregate-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 22px;
+}
+
 .visual-card {
   border-radius: var(--radius-lg);
   padding: 22px;
@@ -1376,6 +1415,40 @@ textarea:focus {
   margin: 0;
   font-size: 0.6875rem;
   color: rgba(148, 163, 184, 0.78);
+}
+
+.recent-run-link {
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.recent-run-link:hover {
+  color: #bfdbfe;
+}
+
+.aggregate-model-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.aggregate-model-cell strong {
+  color: #ffffff;
+}
+
+.aggregate-model-cell span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.aggregate-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recent-runs-table td {
+  vertical-align: top;
 }
 
 .visual-card::before,
@@ -2870,6 +2943,15 @@ textarea:focus {
   .agreement-heatmap {
     overflow-x: auto;
   }
+
+  .aggregate-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aggregate-hero-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2941,5 +3023,17 @@ textarea:focus {
 
   .segment-thumb-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aggregate-hero-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aggregate-hero-actions .primary-btn,
+  .aggregate-hero-actions .ghost-btn {
+    width: 100%;
+    text-align: center;
   }
 }

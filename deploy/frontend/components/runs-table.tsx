@@ -117,14 +117,6 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                   <td>
                     <div className="inline-links">
                       <Link
-                        href={buildHref("/dashboard", {
-                          run: row.run_id,
-                          dataDir: row.data_dir,
-                        })}
-                      >
-                        View
-                      </Link>
-                      <Link
                         href={buildHref(`/report/${row.run_id}`, {
                           dataDir: row.data_dir,
                         })}
@@ -137,6 +129,13 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                         })}
                       >
                         Segments
+                      </Link>
+                      <Link
+                        href={buildHref(`/runs/${row.run_id}/cost`, {
+                          dataDir: row.data_dir,
+                        })}
+                      >
+                        Cost
                       </Link>
                     </div>
                   </td>
