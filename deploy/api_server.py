@@ -296,15 +296,20 @@ def create_app(
     @app.post("/api/benchmark")
     async def start_benchmark(
         background_tasks: BackgroundTasks,
-        video: UploadFile = File(...),
+        video: Optional[UploadFile] = File(None),
+        uploaded_file: Optional[UploadFile] = File(None, alias="file"),
         models: Optional[str] = Form(None),
         name: Optional[str] = Form(None),
     ) -> dict[str, Any]:
+        upload = video or uploaded_file
+        if upload is None:
+            raise HTTPException(status_code=422, detail="A video file is required.")
+
         requested_models = _parse_requested_models(models)
         if not requested_models:
             requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
 
-        upload_name = Path(video.filename or "upload.mp4").name
+        upload_name = Path(upload.filename or "upload.mp4").name
         if Path(upload_name).suffix.lower() not in ALLOWED_SUFFIXES:
             raise HTTPException(
                 status_code=422,
@@ -318,7 +323,7 @@ def create_app(
 
         try:
             file_size_bytes = await _save_upload_file(
-                video,
+                upload,
                 upload_path,
                 int(API_PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024,
             )

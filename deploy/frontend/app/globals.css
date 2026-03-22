@@ -3051,6 +3051,72 @@ textarea:focus {
   position: relative;
 }
 
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--border-radius-md, 8px);
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.server-status strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.server-status p {
+  margin: 2px 0 0;
+  color: var(--color-text-secondary, var(--muted));
+  font-size: 12px;
+}
+
+.server-checking,
+.server-warming {
+  background: var(--color-background-warning, rgba(239, 159, 39, 0.08));
+  border: 1px solid var(--color-border-warning, rgba(239, 159, 39, 0.25));
+}
+
+.server-ready {
+  background: var(--color-background-success, rgba(99, 153, 34, 0.08));
+  border: 1px solid var(--color-border-success, rgba(99, 153, 34, 0.25));
+}
+
+.server-unavailable {
+  background: var(--color-background-danger, rgba(226, 75, 74, 0.08));
+  border: 1px solid var(--color-border-danger, rgba(226, 75, 74, 0.25));
+}
+
+.status-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-secondary, rgba(148, 163, 184, 0.3));
+  border-top-color: var(--color-text-warning, #ef9f27);
+  border-radius: 50%;
+  animation: server-status-spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes server-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-text-success, #639922);
+  flex-shrink: 0;
+}
+
+.server-ready .status-text strong {
+  color: var(--color-text-success, #639922);
+}
+
 .upload-inline-grid {
   grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
   min-height: 220px;

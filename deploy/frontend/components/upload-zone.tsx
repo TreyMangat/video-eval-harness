@@ -6,8 +6,6 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 import {
   fetchModels,
   fetchRun,
-  getHealth,
-  isInteractiveMode,
   pollJob,
   uploadAndBenchmark,
   type ApiModel,
@@ -21,6 +19,9 @@ const DEFAULT_ALLOWED_MODELS = DEFAULT_MODEL_CATALOG.filter((model) => model.tie
   (model) => model.name
 );
 const DEFAULT_SEGMENT_ESTIMATE = 3;
+const API_WARMUP_ATTEMPTS = 12;
+const API_WARMUP_INTERVAL_MS = 5_000;
+const API_WARMUP_TIMEOUT_MS = 8_000;
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
   max_clip_s: 60,
   max_file_size_mb: 100,
@@ -28,7 +29,7 @@ const DEFAULT_LIMITS: HealthPayload["limits"] = {
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
 };
 
-type HealthStatus = "static" | "checking" | "ready" | "offline";
+type ServerState = "checking" | "warming" | "ready" | "unavailable";
 type JobState = {
   jobId: string;
   status: "queued" | "running";
@@ -106,12 +107,44 @@ function formatBackendError(error: unknown, fallback: string): string {
   return message || fallback;
 }
 
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function checkServerHealth(apiUrl: string): Promise<HealthPayload> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, API_WARMUP_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      new URL("api/health", apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`).toString(),
+      {
+        cache: "no-store",
+        mode: "cors",
+        signal: controller.signal,
+      }
+    );
+    const payload = (await response.json().catch(() => null)) as HealthPayload | null;
+    if (!response.ok || !payload) {
+      throw new Error(`Server readiness check failed (${response.status}).`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function UploadZone() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const interactiveMode = isInteractiveMode();
-  const [healthStatus, setHealthStatus] = useState<HealthStatus>(
-    interactiveMode ? "checking" : "static"
-  );
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim() ?? "";
+  const interactiveMode = apiUrl.length > 0;
+  const [serverState, setServerState] = useState<ServerState>("checking");
+  const [warmupStartTime, setWarmupStartTime] = useState<number | null>(null);
+  const [warmupElapsed, setWarmupElapsed] = useState(0);
   const [health, setHealth] = useState<HealthPayload | null>(null);
   const [modelOptions, setModelOptions] = useState<ApiModel[]>(fallbackModelOptions);
   const [selectedModels, setSelectedModels] = useState<string[]>(DEFAULT_ALLOWED_MODELS);
@@ -125,7 +158,6 @@ export function UploadZone() {
   const [completedBenchmark, setCompletedBenchmark] = useState<CompletedBenchmark | null>(null);
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
-  const readyForUpload = interactiveMode && healthStatus === "ready";
   const modelOptionsByName = useMemo(
     () => new Map(modelOptions.map((model) => [model.name, model])),
     [modelOptions]
@@ -165,49 +197,117 @@ export function UploadZone() {
 
   useEffect(() => {
     if (!interactiveMode) {
-      setHealthStatus("static");
       return;
     }
 
     let cancelled = false;
 
-    async function loadInteractiveState(): Promise<void> {
+    setErrorMessage(null);
+    setServerState("checking");
+    setWarmupStartTime(Date.now());
+    setWarmupElapsed(0);
+
+    async function loadModelCatalog(healthPayload: HealthPayload): Promise<void> {
       try {
-        const [healthPayload, modelPayload] = await Promise.all([getHealth(), fetchModels()]);
-        if (cancelled) {
+        const modelPayload = await fetchModels();
+        if (cancelled || !Array.isArray(modelPayload.models) || modelPayload.models.length === 0) {
           return;
         }
 
-        setHealth(healthPayload);
-        if (Array.isArray(modelPayload.models) && modelPayload.models.length > 0) {
-          setModelOptions(modelPayload.models);
+        const allowedModelNames = new Set(
+          modelPayload.models.map((model) => model.name).filter((modelName) =>
+            healthPayload.limits.allowed_models.includes(modelName)
+          )
+        );
+
+        setModelOptions(modelPayload.models);
+        setSelectedModels((current) => {
+          const preserved = current
+            .filter((modelName) => allowedModelNames.has(modelName))
+            .slice(0, healthPayload.limits.max_models);
+          if (preserved.length > 0) {
+            return preserved;
+          }
+
           const preferredSelection = modelPayload.models
-            .filter((model) => modelTier(model) === "fast")
+            .filter(
+              (model) =>
+                allowedModelNames.has(model.name) && modelTier(model) === "fast"
+            )
             .map((model) => model.name)
             .slice(0, healthPayload.limits.max_models);
-          setSelectedModels(
-            preferredSelection.length > 0
-              ? preferredSelection
-              : modelPayload.models
-                  .map((model) => model.name)
-                  .slice(0, healthPayload.limits.max_models)
-          );
-        }
-        setHealthStatus("ready");
+
+          return preferredSelection.length > 0
+            ? preferredSelection
+            : modelPayload.models
+                .map((model) => model.name)
+                .filter((modelName) => allowedModelNames.has(modelName))
+                .slice(0, healthPayload.limits.max_models);
+        });
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setHealthStatus("offline");
-        setErrorMessage(formatBackendError(error, "Interactive backend is unavailable."));
+        console.error("Failed to load model catalog during warm-up:", error);
       }
     }
 
-    void loadInteractiveState();
+    async function warmServer(): Promise<void> {
+      for (let attempt = 0; attempt < API_WARMUP_ATTEMPTS; attempt += 1) {
+        try {
+          const healthPayload = await checkServerHealth(apiUrl);
+          if (cancelled) {
+            return;
+          }
+
+          setHealth(healthPayload);
+          setSelectedModels((current) => {
+            const preserved = current
+              .filter((modelName) => healthPayload.limits.allowed_models.includes(modelName))
+              .slice(0, healthPayload.limits.max_models);
+            return preserved.length > 0
+              ? preserved
+              : healthPayload.limits.allowed_models.slice(0, healthPayload.limits.max_models);
+          });
+          setServerState("ready");
+          void loadModelCatalog(healthPayload);
+          return;
+        } catch {
+          if (cancelled) {
+            return;
+          }
+          setServerState("warming");
+        }
+
+        if (attempt < API_WARMUP_ATTEMPTS - 1) {
+          await wait(API_WARMUP_INTERVAL_MS);
+        }
+      }
+
+      if (!cancelled) {
+        setServerState("unavailable");
+        setStatusMessage(null);
+      }
+    }
+
+    void warmServer();
     return () => {
       cancelled = true;
     };
-  }, [interactiveMode]);
+  }, [apiUrl, interactiveMode]);
+
+  useEffect(() => {
+    if (serverState !== "checking" && serverState !== "warming") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (warmupStartTime) {
+        setWarmupElapsed(Math.floor((Date.now() - warmupStartTime) / 1000));
+      }
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [serverState, warmupStartTime]);
 
   useEffect(() => {
     if (!isJobActive(job)) {
@@ -343,10 +443,7 @@ export function UploadZone() {
           checked={checked}
           onChange={() => toggleModel(model.name)}
           disabled={
-            !readyForUpload ||
-            isSubmitting ||
-            isJobActive(job) ||
-            (!checked && selectedModels.length >= limits.max_models)
+            isSubmitting || isJobActive(job) || (!checked && selectedModels.length >= limits.max_models)
           }
         />
       </label>
@@ -354,23 +451,25 @@ export function UploadZone() {
   }
 
   async function startBenchmark(): Promise<void> {
-    if (!readyForUpload || !selectedFile || selectedModels.length === 0 || isSubmitting) {
+    if (serverState !== "ready" || !selectedFile || selectedModels.length === 0 || isSubmitting) {
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setStatusMessage("Checking benchmark server...");
+    setStatusMessage("Uploading video...");
     setCompletedBenchmark(null);
 
     try {
-      const healthPayload = await getHealth();
-      setHealth(healthPayload);
-      setStatusMessage("Uploading clip...");
       const response: BenchmarkJobResponse = await uploadAndBenchmark(
         selectedFile,
         selectedModels,
-        benchmarkName.trim() || undefined
+        benchmarkName.trim() || undefined,
+        {
+          onStatus: (message) => {
+            setStatusMessage(message);
+          },
+        }
       );
       setJob({
         jobId: response.job_id,
@@ -418,30 +517,70 @@ export function UploadZone() {
   }
 
   return (
-    <section
-      className={`visual-card upload-inline-card dashboard-section-card ${
-        healthStatus !== "ready" ? "is-disabled" : ""
-      }`}
-    >
+    <section className="visual-card upload-inline-card dashboard-section-card">
       <div className="upload-inline-card-body">
+        {serverState === "checking" ? (
+          <div className="server-status server-checking" aria-live="polite">
+            <div className="status-spinner" aria-hidden="true" />
+            <div className="status-text">
+              <strong>Connecting to benchmark server...</strong>
+              <p>This usually takes a few seconds.</p>
+            </div>
+          </div>
+        ) : null}
+
+        {serverState === "warming" ? (
+          <div className="server-status server-warming" aria-live="polite">
+            <div className="status-spinner" aria-hidden="true" />
+            <div className="status-text">
+              <strong>Benchmark server is waking up...</strong>
+              <p>
+                Modal serverless functions need a moment to start. {warmupElapsed}s elapsed -
+                usually ready within 20-30 seconds.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {serverState === "ready" ? (
+          <div className="server-status server-ready" aria-live="polite">
+            <div className="status-dot" aria-hidden="true" />
+            <div className="status-text">
+              <strong>Server ready</strong>
+            </div>
+          </div>
+        ) : null}
+
+        {serverState === "unavailable" ? (
+          <div className="server-status server-unavailable" aria-live="polite">
+            <div className="status-text">
+              <strong>Benchmark server is currently unavailable.</strong>
+              <p>
+                The server did not respond after 60 seconds. Try refreshing the page, or check
+                back later.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div className="upload-inline-grid">
           <div
             className={`upload-inline-dropzone ${isDragActive ? "drag-active" : ""}`}
             onClick={() => {
-              if (healthStatus === "ready") {
+              if (!isSubmitting && !isJobActive(job)) {
                 fileInputRef.current?.click();
               }
             }}
             onDrop={handleDrop}
             onDragEnter={(event) => {
               event.preventDefault();
-              if (healthStatus === "ready") {
+              if (!isSubmitting && !isJobActive(job)) {
                 setIsDragActive(true);
               }
             }}
             onDragOver={(event) => {
               event.preventDefault();
-              if (healthStatus === "ready") {
+              if (!isSubmitting && !isJobActive(job)) {
                 setIsDragActive(true);
               }
             }}
@@ -452,9 +591,9 @@ export function UploadZone() {
               }
             }}
             role="button"
-            tabIndex={healthStatus === "ready" ? 0 : -1}
+            tabIndex={isSubmitting || isJobActive(job) ? -1 : 0}
             onKeyDown={(event) => {
-              if (healthStatus !== "ready") {
+              if (isSubmitting || isJobActive(job)) {
                 return;
               }
               if (event.key === "Enter" || event.key === " ") {
@@ -469,7 +608,7 @@ export function UploadZone() {
               accept={ACCEPTED_TYPES.join(",")}
               onChange={handleInputChange}
               hidden
-              disabled={healthStatus !== "ready"}
+              disabled={isSubmitting || isJobActive(job)}
             />
 
             <div className="upload-inline-dropzone-main">
@@ -507,9 +646,6 @@ export function UploadZone() {
                   </span>
                 ))}
               </div>
-              {healthStatus === "offline" ? (
-                <p className="upload-inline-error">Backend unavailable. Check your API URL.</p>
-              ) : null}
             </div>
 
             {selectedFileLabel ? (
@@ -543,7 +679,7 @@ export function UploadZone() {
                 value={benchmarkName}
                 onChange={(event) => setBenchmarkName(event.target.value)}
                 placeholder="factory-floor-smoke-test"
-                disabled={!readyForUpload || isSubmitting || isJobActive(job)}
+                disabled={isSubmitting || isJobActive(job)}
               />
             </label>
 
@@ -592,14 +728,18 @@ export function UploadZone() {
               className="primary-btn upload-inline-button"
               onClick={() => void startBenchmark()}
               disabled={
-                !readyForUpload ||
+                serverState !== "ready" ||
                 isSubmitting ||
                 isJobActive(job) ||
                 !selectedFile ||
                 selectedModels.length === 0
               }
             >
-              Start Benchmark
+              {serverState === "unavailable"
+                ? "Server unavailable"
+                : serverState !== "ready"
+                  ? "Waiting for server..."
+                  : "Start Benchmark"}
             </button>
 
             {isJobActive(job) ? (

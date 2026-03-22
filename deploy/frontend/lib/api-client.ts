@@ -36,6 +36,12 @@ export type JobStatusResponse = {
   progress?: string | null;
 };
 
+export type UploadAndBenchmarkOptions = {
+  onStatus?: (message: string) => void;
+};
+
+class NonRetryableUploadError extends Error {}
+
 const HEALTH_TIMEOUT_MS = 15_000;
 const MODELS_TIMEOUT_MS = 15_000;
 const RUNS_TIMEOUT_MS = 30_000;
@@ -56,17 +62,20 @@ function buildApiUrl(path: string): string {
   return new URL(path, apiUrl.endsWith("/") ? apiUrl : `${apiUrl}/`).toString();
 }
 
+function parseJsonText(text: string): unknown {
+  if (!text) {
+    return {};
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return {};
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const parsed = text
-    ? (() => {
-        try {
-          return JSON.parse(text) as unknown;
-        } catch {
-          return {};
-        }
-      })()
-    : {};
+  const parsed = parseJsonText(text);
   const data = parsed as T & {
     detail?: string;
     error?: string;
@@ -132,26 +141,82 @@ export async function fetchModels(): Promise<{ models: ApiModel[] }> {
 export async function uploadAndBenchmark(
   file: File,
   models?: string[],
-  name?: string
+  name?: string,
+  options?: UploadAndBenchmarkOptions
 ): Promise<BenchmarkJobResponse> {
-  const form = new FormData();
-  form.append("video", file);
-  if (models && models.length > 0) {
-    form.append("models", JSON.stringify(models));
-  }
-  if (name) {
-    form.append("name", name);
+  const maxRetries = 2;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const form = new FormData();
+    form.append("video", file);
+    if (models && models.length > 0) {
+      form.append("models", JSON.stringify(models));
+    }
+    if (name) {
+      form.append("name", name);
+    }
+
+    try {
+      options?.onStatus?.(
+        attempt > 0 ? `Retry ${attempt}/${maxRetries} - uploading video...` : "Uploading video..."
+      );
+      const response = await fetchWithTimeout(
+        buildApiUrl("api/benchmark"),
+        {
+          method: "POST",
+          body: form,
+        },
+        UPLOAD_TIMEOUT_MS
+      );
+      const text = await response.text();
+      const parsed = parseJsonText(text) as BenchmarkJobResponse & {
+        detail?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        const message =
+          parsed.detail || parsed.error || `Server error ${response.status}`;
+        if (response.status >= 500) {
+          throw new Error(message);
+        }
+        throw new NonRetryableUploadError(message);
+      }
+
+      return parsed;
+    } catch (error) {
+      if (error instanceof NonRetryableUploadError) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : "Upload failed.";
+      const isTimeout = message.startsWith("Request timed out after");
+      if (attempt < maxRetries) {
+        if (isTimeout) {
+          options?.onStatus?.("Upload timed out. Retrying...");
+          try {
+            await getHealth();
+          } catch {
+            // Best-effort health check between retries.
+          }
+        } else {
+          options?.onStatus?.("Upload failed. Retrying in 3 seconds...");
+        }
+        await new Promise((resolve) => {
+          setTimeout(resolve, 3000);
+        });
+        continue;
+      }
+
+      if (isTimeout) {
+        throw new Error(
+          "Upload timed out after multiple attempts. The server may be overloaded - try again in a minute."
+        );
+      }
+      throw error;
+    }
   }
 
-  const response = await fetchWithTimeout(
-    buildApiUrl("api/benchmark"),
-    {
-      method: "POST",
-      body: form,
-    },
-    UPLOAD_TIMEOUT_MS
-  );
-  return readJson<BenchmarkJobResponse>(response);
+  throw new Error("Upload failed.");
 }
 
 export async function pollJob(jobId: string): Promise<JobStatusResponse> {

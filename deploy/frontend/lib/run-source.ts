@@ -6,6 +6,32 @@ import {
 } from "./local-runs";
 import type { RunListItem, RunPayload, SegmentMedia } from "./types";
 
+const LIVE_FETCH_ATTEMPTS = 10;
+const LIVE_FETCH_DELAY_MS = 2_000;
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function retryLiveFetch<T>(load: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < LIVE_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      return await load();
+    } catch (error) {
+      lastError = error;
+      if (attempt < LIVE_FETCH_ATTEMPTS - 1) {
+        await wait(LIVE_FETCH_DELAY_MS);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 function sortRunsByDate(runs: RunListItem[]): RunListItem[] {
   return [...runs].sort(
     (left, right) =>
@@ -66,7 +92,7 @@ export async function loadRun(
     }
 
     try {
-      return await fetchRun(runId);
+      return await retryLiveFetch(() => fetchRun(runId));
     } catch (liveError) {
       console.error(`Failed to load live run ${runId}:`, liveError);
       return null;
@@ -98,7 +124,7 @@ export async function loadSegmentMedia(
     }
 
     try {
-      return await fetchSegmentMedia(runId, segmentId, variantId);
+      return await retryLiveFetch(() => fetchSegmentMedia(runId, segmentId, variantId));
     } catch (liveError) {
       console.error(`Failed to load live segment media for ${runId}/${segmentId}:`, liveError);
       return null;
