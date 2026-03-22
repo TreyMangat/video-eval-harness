@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 
-import { formatLatency, formatMoney, formatPercent, modelColor } from "../lib/analysis";
+import {
+  formatLatency,
+  formatMoney,
+  formatPercent,
+  getModelTier,
+  modelColor,
+} from "../lib/analysis";
 import type { AggregateModelRow } from "./aggregate-dashboard";
 
 type SortKey =
@@ -111,6 +117,20 @@ function medalClass(index: number): string {
     return "medal-bronze";
   }
   return "";
+}
+
+function tierBadgeLabel(modelName: string): string {
+  const tier = getModelTier(modelName);
+  if (tier === "free") {
+    return "Free";
+  }
+  if (tier === "fast") {
+    return "Fast";
+  }
+  if (tier === "frontier") {
+    return "Frontier";
+  }
+  return "Unknown";
 }
 
 function defaultSortKey(rows: AggregateModelRow[]): SortKey {
@@ -399,7 +419,12 @@ export function AggregateLeaderboardClient({
                 </td>
                 <td>
                   <div className="aggregate-model-cell">
-                    <strong>{row.model_name}</strong>
+                    <div className="aggregate-model-heading">
+                      <strong>{row.model_name}</strong>
+                      <span className={`aggregate-tier-badge ${getModelTier(row.model_name)}`}>
+                        {tierBadgeLabel(row.model_name)}
+                      </span>
+                    </div>
                     <span>
                       {row.run_count} {row.run_count === 1 ? "run" : "runs"} loaded
                     </span>

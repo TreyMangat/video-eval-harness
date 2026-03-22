@@ -68,10 +68,43 @@ export type CostBreakdown = {
 };
 
 const MODEL_COLOR_MAP: Array<{ match: string; color: string }> = [
+  { match: "mistral-large", color: "#D85A30" },
+  { match: "mistral-small-4-2503", color: "#F0997B" },
+  { match: "mistral-small-4", color: "#F0997B" },
+  { match: "mistral-small-3.1", color: "#F5C4B3" },
+  { match: "grok-4.1", color: "#D4537E" },
+  { match: "grok-4-fast", color: "#D4537E" },
+  { match: "grok-4", color: "#993556" },
+  { match: "nemotron", color: "#1D9E75" },
+  { match: "qwen3.5-122b", color: "#AFA9EC" },
+  { match: "qwen3.5-9b", color: "#CECBF6" },
   { match: "gemini", color: "#4c9aff" },
   { match: "gpt", color: "#22c55e" },
   { match: "qwen", color: "#a855f7" },
   { match: "llama", color: "#f59e0b" },
+];
+
+export type ModelTier = "fast" | "frontier" | "free" | "unknown";
+
+const FAST_TIER_MATCHES = [
+  "gemini-3-flash",
+  "gpt-5.4-mini",
+  "qwen3.5-27b",
+  "mistral-small-4",
+  "mistral-small-4-2503",
+  "qwen3.5-9b",
+];
+
+const FREE_TIER_MATCHES = ["nemotron-nano", "mistral-small-3.1"];
+
+const FRONTIER_TIER_MATCHES = [
+  "gemini-3.1-pro",
+  "gpt-5.4",
+  "qwen3.5-vl",
+  "llama-4-maverick",
+  "mistral-large",
+  "grok-4",
+  "qwen3.5-122b",
 ];
 
 function average(values: number[]): number | null {
@@ -219,6 +252,21 @@ export function modelColor(modelName: string): string {
     }
   }
   return "#38bdf8";
+}
+
+export function getModelTier(modelName: string): ModelTier {
+  const normalized = modelName.toLowerCase();
+
+  if (FREE_TIER_MATCHES.some((match) => normalized.includes(match))) {
+    return "free";
+  }
+  if (FAST_TIER_MATCHES.some((match) => normalized.includes(match))) {
+    return "fast";
+  }
+  if (FRONTIER_TIER_MATCHES.some((match) => normalized.includes(match))) {
+    return "frontier";
+  }
+  return "unknown";
 }
 
 export function overallModelScore(row: CoreComparisonRow): number | null {
