@@ -19,6 +19,7 @@ const PRIMARY_NAV_ITEMS = [
   { href: "/runs", label: "Runs", key: "runs" },
   { href: "/compare", label: "Compare", key: "compare" },
   { href: "/accuracy-test", label: "Accuracy Test", key: "accuracy" },
+  { href: "/batch-accuracy-test", label: "Batch Test", key: "batch" },
   { href: "/new", label: "New Benchmark", key: "new" },
 ] as const;
 
@@ -26,7 +27,7 @@ export function TopNav({
   active,
   runSelector,
 }: {
-  active: "dashboard" | "runs" | "compare" | "accuracy" | "new";
+  active: "dashboard" | "runs" | "compare" | "accuracy" | "batch" | "new";
   runSelector?: RunSelectorConfig;
 }) {
   const router = useRouter();

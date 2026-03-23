@@ -28,6 +28,11 @@ export type BenchmarkJobResponse = {
   estimated_time_s: number;
 };
 
+export type BatchBenchmarkJobResponse = BenchmarkJobResponse & {
+  video_count: number;
+  segment_count: number;
+};
+
 export type SegmentPreviewSegment = {
   segment_index: number;
   segment_id: string;
@@ -294,6 +299,92 @@ export async function uploadAndBenchmark(
   }
 
   throw new Error("Upload failed.");
+}
+
+export async function uploadBatchBenchmark(
+  csvFile: File,
+  videos: File[],
+  models?: string[],
+  name?: string,
+  options?: Pick<UploadAndBenchmarkOptions, "onStatus">
+): Promise<BatchBenchmarkJobResponse> {
+  const maxRetries = 2;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const form = new FormData();
+    form.append("csv_file", csvFile);
+    for (const video of videos) {
+      form.append("videos", video);
+    }
+    if (models && models.length > 0) {
+      form.append("models", JSON.stringify(models));
+    }
+    if (name) {
+      form.append("name", name);
+    }
+
+    try {
+      options?.onStatus?.(
+        attempt > 0
+          ? `Retry ${attempt}/${maxRetries} - uploading batch files...`
+          : "Uploading CSV and videos..."
+      );
+      const response = await fetchWithTimeout(
+        buildApiUrl("api/batch-benchmark"),
+        {
+          method: "POST",
+          body: form,
+        },
+        UPLOAD_TIMEOUT_MS * 2
+      );
+      const text = await response.text();
+      const parsed = parseJsonText(text) as BatchBenchmarkJobResponse & {
+        detail?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        const message =
+          parsed.detail || parsed.error || `Server error ${response.status}`;
+        if (response.status >= 500) {
+          throw new Error(message);
+        }
+        throw new NonRetryableUploadError(message);
+      }
+
+      return parsed;
+    } catch (error) {
+      if (error instanceof NonRetryableUploadError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : "Batch upload failed.";
+      const isTimeout = message.startsWith("Request timed out after");
+      if (attempt < maxRetries) {
+        if (isTimeout) {
+          options?.onStatus?.("Batch upload timed out. Retrying...");
+          try {
+            await getHealth();
+          } catch {
+            // Best-effort health check between retries.
+          }
+        } else {
+          options?.onStatus?.("Batch upload failed. Retrying in 3 seconds...");
+        }
+        await sleep(3000);
+        continue;
+      }
+
+      if (isTimeout) {
+        throw new Error(
+          "Batch upload timed out after multiple attempts. The server may be overloaded - try again in a minute."
+        );
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Batch upload failed.");
 }
 
 export async function previewSegments(

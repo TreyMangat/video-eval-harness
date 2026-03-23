@@ -7,6 +7,8 @@ Run locally with:
 from __future__ import annotations
 
 import base64
+import csv
+import io
 import json
 import os
 import re
@@ -538,6 +540,251 @@ def create_app(
             "estimated_time_s": ESTIMATED_TIME_S,
         }
 
+    @app.post("/api/batch-benchmark")
+    async def batch_benchmark(
+        background_tasks: BackgroundTasks,
+        csv_file: UploadFile = File(...),
+        videos: list[UploadFile] = File(...),
+        name: str = Form("Batch Accuracy Test"),
+        models: Optional[str] = Form(None),
+    ) -> dict[str, Any]:
+        requested_models = _parse_requested_models(models)
+        if not requested_models:
+            requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
+
+        try:
+            app.state.refresh_artifacts()
+        except Exception as exc:
+            print(f"Warning: volume.reload() failed before batch upload handling: {exc}")
+
+        artifacts_path = Path(app.state.artifacts_dir)
+        uploads_root = artifacts_path / UPLOADS_DIR
+        uploads_root.mkdir(parents=True, exist_ok=True)
+        upload_dir = Path(tempfile.mkdtemp(prefix="public_batch_benchmark_", dir=uploads_root))
+
+        try:
+            csv_content = (await csv_file.read()).decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=422,
+                detail="CSV must be UTF-8 encoded.",
+            ) from exc
+
+        labels_by_video = _parse_batch_labels_csv(csv_content)
+        if not labels_by_video:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=400,
+                detail="CSV has no valid rows. Expected columns: video_filename, label.",
+            )
+
+        if not videos:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail="At least one video file is required.")
+
+        saved_videos: dict[str, tuple[Path, int, Any]] = {}
+        max_file_size_bytes = int(API_PUBLIC_LIMITS["max_file_size_mb"]) * 1024 * 1024
+
+        try:
+            for upload in videos:
+                upload_name = Path(upload.filename or "upload.mp4").name
+                normalized_name = _normalize_uploaded_filename(upload_name)
+                if Path(upload_name).suffix.lower() not in ALLOWED_SUFFIXES:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Unsupported file type for '{upload_name}'.",
+                    )
+                if normalized_name in saved_videos:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Duplicate uploaded filename '{upload_name}'.",
+                    )
+
+                destination = upload_dir / upload_name
+                file_size_bytes = await _save_upload_file(upload, destination, max_file_size_bytes)
+                video_info = probe_video(destination)
+                is_valid, error_message = validate_api_public_request(
+                    file_size_bytes=file_size_bytes,
+                    duration_s=video_info.duration_s,
+                    requested_models=requested_models,
+                )
+                if not is_valid:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=error_message or f"Upload rejected for '{upload_name}'.",
+                    )
+
+                saved_videos[normalized_name] = (destination, file_size_bytes, video_info)
+        except HTTPException:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise
+        except Exception as exc:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unable to read uploaded videos: {exc}",
+            ) from exc
+
+        missing_videos = sorted(
+            filename for filename in labels_by_video if filename not in saved_videos
+        )
+        if missing_videos:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV references videos not uploaded: {', '.join(missing_videos)}",
+            )
+
+        (upload_dir / "labels.csv").write_text(csv_content, encoding="utf-8")
+
+        batch_preview_root = upload_dir / "batch_previews"
+        batch_preview_root.mkdir(parents=True, exist_ok=True)
+        ground_truth_entries: list[dict[str, Any]] = []
+        preview_videos: list[dict[str, Any]] = []
+        total_segments = 0
+
+        for index, (filename, labels_for_video) in enumerate(labels_by_video.items()):
+            source_path, file_size_bytes, video_info = saved_videos[filename]
+            safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", source_path.stem) or f"video-{index:03d}"
+            preview_dir = batch_preview_root / f"{index:03d}-{safe_stem}"
+            preview_dir.mkdir(parents=True, exist_ok=True)
+
+            preview_response, preview_state = _build_segment_preview_payload(
+                source_path,
+                source_path.name,
+                file_size_bytes,
+                video_info,
+                preview_dir,
+            )
+            (preview_dir / "preview.json").write_text(
+                json.dumps(preview_state, indent=2),
+                encoding="utf-8",
+            )
+
+            preview_segments = (
+                preview_state.get("segments")
+                if isinstance(preview_state.get("segments"), list)
+                else []
+            )
+            preview_video_id = str(preview_state.get("video_id") or "")
+            total_segments += len(preview_segments)
+
+            for label_index, label in enumerate(labels_for_video):
+                if label_index >= len(preview_segments):
+                    break
+                preview_segment = preview_segments[label_index]
+                if not isinstance(preview_segment, dict):
+                    continue
+                label_value = str(label or "").strip()
+                if not label_value:
+                    continue
+                ground_truth_entries.append(
+                    {
+                        "video_id": preview_video_id,
+                        "segment_id": str(preview_segment.get("segment_id") or ""),
+                        "start_time_s": float(preview_segment.get("start_s") or 0.0),
+                        "end_time_s": float(preview_segment.get("end_s") or 0.0),
+                        "primary_action": label_value,
+                        "secondary_actions": [],
+                        "description": None,
+                        "source": "user_csv_upload",
+                    }
+                )
+
+            preview_videos.append(
+                {
+                    "filename": source_path.name,
+                    "video_id": preview_video_id,
+                    "segment_count": len(preview_segments),
+                    "label_count": len(labels_for_video),
+                }
+            )
+
+        if not ground_truth_entries:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=400,
+                detail="No usable labels matched uploaded video segments.",
+            )
+
+        ground_truth_path = upload_dir / "ground_truth.json"
+        ground_truth_path.write_text(
+            json.dumps(ground_truth_entries, indent=2),
+            encoding="utf-8",
+        )
+
+        try:
+            app.state.sync_artifacts()
+        except Exception as exc:
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to persist batch upload data. Please try again.",
+            ) from exc
+
+        job_id = str(uuid.uuid4())
+        normalized_name = _normalize_name(name)
+        normalized_run_type = "accuracy_test"
+        _save_job(
+            artifacts_path,
+            job_id,
+            "queued",
+            stage="queued",
+            progress=f"Processing {len(preview_videos)} videos...",
+            run_type=normalized_run_type,
+            sync_artifacts=app.state.sync_artifacts,
+            persist_job_state=app.state.job_state_saver,
+        )
+
+        try:
+            if app.state.job_submitter is not None:
+                app.state.job_submitter(
+                    artifacts_path,
+                    job_id,
+                    upload_dir,
+                    requested_models,
+                    normalized_name,
+                    _existing_run_ids(_runs_dir(artifacts_path)),
+                    normalized_run_type,
+                    ground_truth_path,
+                )
+            else:
+                background_tasks.add_task(
+                    app.state.job_runner,
+                    artifacts_path,
+                    job_id,
+                    upload_dir,
+                    requested_models,
+                    normalized_name,
+                    _existing_run_ids(_runs_dir(artifacts_path)),
+                    normalized_run_type,
+                    ground_truth_path,
+                    app.state.sync_artifacts,
+                    app.state.job_state_saver,
+                )
+        except Exception as exc:
+            _save_job(
+                artifacts_path,
+                job_id,
+                "failed",
+                error=f"Unable to start batch benchmark job: {exc}",
+                stage="failed",
+                progress="Unable to start batch benchmark job.",
+                run_type=normalized_run_type,
+                sync_artifacts=app.state.sync_artifacts,
+                persist_job_state=app.state.job_state_saver,
+            )
+            raise HTTPException(status_code=500, detail="Failed to start batch benchmark job.") from exc
+
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "video_count": len(preview_videos),
+            "segment_count": total_segments,
+            "estimated_time_s": max(total_segments, 1) * max(len(requested_models), 1) * 5,
+        }
+
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str) -> dict[str, Any]:
         app.state.refresh_artifacts()
@@ -603,6 +850,48 @@ def _normalize_name(raw_name: Optional[str]) -> Optional[str]:
         return None
     cleaned = raw_name.strip()
     return cleaned or None
+
+
+def _normalize_uploaded_filename(raw_name: str) -> str:
+    return Path(raw_name).name.strip().lower()
+
+
+def _parse_batch_labels_csv(raw_csv: str) -> dict[str, list[str]]:
+    normalized = raw_csv.lstrip("\ufeff").strip()
+    if not normalized:
+        return {}
+
+    first_line = normalized.splitlines()[0] if normalized.splitlines() else ""
+    delimiter = "\t" if "\t" in first_line and "," not in first_line else ","
+    reader = csv.reader(io.StringIO(normalized), delimiter=delimiter)
+    rows = [
+        [str(cell).strip() for cell in row]
+        for row in reader
+        if any(str(cell).strip() for cell in row)
+    ]
+    if not rows:
+        return {}
+
+    lowered_header = [cell.lower() for cell in rows[0]]
+    has_header = any(
+        "video_filename" in cell or cell == "filename" or "label" in cell
+        for cell in lowered_header
+    )
+    data_rows = rows[1:] if has_header else rows
+
+    labels_by_video: dict[str, list[str]] = {}
+    for row in data_rows:
+        if len(row) < 2:
+            continue
+
+        filename = _normalize_uploaded_filename(row[0])
+        label = row[-1].strip()
+        if not filename or not label:
+            continue
+
+        labels_by_video.setdefault(filename, []).append(label)
+
+    return labels_by_video
 
 
 def _noop_sync() -> None:
@@ -1170,6 +1459,8 @@ def _run_benchmark_job(
     sync_artifacts: Optional[ArtifactSync] = None,
     persist_job_state: Optional[JobStateSaver] = None,
 ) -> None:
+    work_dir = upload_path if upload_path.is_dir() else upload_path.parent
+
     _update_job_stage(
         artifacts_dir,
         job_id,
@@ -1249,11 +1540,11 @@ def _run_benchmark_job(
         stdout_text = "".join(combined_output)
         stderr_text = ""
 
-        (upload_path.parent / "benchmark.stdout.log").write_text(
+        (work_dir / "benchmark.stdout.log").write_text(
             stdout_text,
             encoding="utf-8",
         )
-        (upload_path.parent / "benchmark.stderr.log").write_text(
+        (work_dir / "benchmark.stderr.log").write_text(
             stderr_text,
             encoding="utf-8",
         )
@@ -1332,7 +1623,7 @@ def _run_benchmark_job(
             persist_job_state=persist_job_state,
         )
     finally:
-        shutil.rmtree(upload_path.parent, ignore_errors=True)
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def _command_error(stdout: str, stderr: str) -> str:
