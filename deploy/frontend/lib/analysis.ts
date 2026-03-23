@@ -1,5 +1,6 @@
 import { computeAgreementMatrix, computeSweepMetrics } from "./run-metrics";
 import type {
+  AccuracyMetric,
   LabelResult,
   ModelSummary,
   RunPayload,
@@ -140,6 +141,24 @@ function safeSummaries(run: RunPayload): Record<string, ModelSummary> {
 
 function safeAgreement(run: RunPayload): Record<string, Record<string, number>> {
   return run.agreement && typeof run.agreement === "object" ? run.agreement : {};
+}
+
+function safeAccuracyMetrics(
+  metrics: RunPayload["accuracy_by_model"] | RunPayload["llm_accuracy"]
+): Record<string, AccuracyMetric> {
+  return metrics && typeof metrics === "object" ? metrics : {};
+}
+
+function accuracyMetricForModel(
+  metrics: Record<string, AccuracyMetric>,
+  modelName: string
+): AccuracyMetric | undefined {
+  const metric = metrics[modelName];
+  return metric && typeof metric === "object" ? metric : undefined;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function titleCaseToken(value: string): string {
@@ -432,6 +451,8 @@ export function buildCoreComparisonRows(
   const models = safeModels(run);
   const summaries = safeSummaries(run);
   const agreement = safeAgreement(run);
+  const accuracyByModel = safeAccuracyMetrics(run.accuracy_by_model);
+  const llmAccuracyByModel = safeAccuracyMetrics(run.llm_accuracy);
   const stabilityByModel = new Map(
     (sweepData?.stability ?? []).map((entry) => [entry.model_name, entry.rank_stability])
   );
@@ -439,13 +460,24 @@ export function buildCoreComparisonRows(
   return models
     .map((modelName) => {
       const summary = summaries[modelName];
+      const rawAccuracy = accuracyMetricForModel(accuracyByModel, modelName);
+      const rawLlmAccuracy = accuracyMetricForModel(llmAccuracyByModel, modelName);
       return {
         model_name: modelName,
         parse_rate: summary?.parse_success_rate ?? null,
         agreement: meanModelAgreement(agreement, modelName),
-        accuracy: summary?.exact_match_rate ?? null,
-        llm_accuracy: resolveLlmAccuracy(summary),
-        fuzzy_accuracy: summary?.fuzzy_match_rate ?? null,
+        accuracy:
+          toNullableNumber(rawAccuracy?.exact_match_rate) ??
+          toNullableNumber(rawAccuracy?.accuracy) ??
+          summary?.exact_match_rate ??
+          summary?.accuracy ??
+          null,
+        llm_accuracy:
+          toNullableNumber(rawLlmAccuracy?.llm_accuracy) ??
+          toNullableNumber(rawAccuracy?.llm_accuracy) ??
+          resolveLlmAccuracy(summary),
+        fuzzy_accuracy:
+          toNullableNumber(rawAccuracy?.fuzzy_match_rate) ?? summary?.fuzzy_match_rate ?? null,
         confidence: summary?.avg_confidence ?? null,
         avg_latency_ms: summary?.avg_latency_ms ?? null,
         total_cost: summary?.total_estimated_cost ?? null,

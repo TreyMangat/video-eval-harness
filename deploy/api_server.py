@@ -2175,6 +2175,14 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
     llm_agreement, llm_accuracy, judge_stats, accuracy_by_model = _load_judge_data_from_export(
         storage, run_id
     )
+    summaries = _normalize_export_summaries(
+        {
+            "summaries": summaries,
+            "accuracy_by_model": accuracy_by_model,
+            "llm_accuracy": llm_accuracy,
+        },
+        models,
+    )
 
     segment_items = []
     for segment in segments:
