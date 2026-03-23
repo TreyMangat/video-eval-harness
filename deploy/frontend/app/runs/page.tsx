@@ -6,6 +6,7 @@ import {
   displayVideoName,
   getSweepData,
 } from "../../lib/analysis";
+import { isVisibleRun } from "../../lib/run-visibility";
 import { listRuns, loadRun } from "../../lib/run-source";
 
 export const runtime = "nodejs";
@@ -104,11 +105,12 @@ export default async function RunsPage({
       (left, right) =>
         new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     );
+  const visibleRows = rows.filter((row) => isVisibleRun(row));
 
   return (
     <main className="analysis-shell">
       <TopNav active="runs" />
-      {rows.length === 0 ? (
+      {visibleRows.length === 0 ? (
         <section className="visual-card">
           <div className="section-heading">
             <p className="section-eyebrow">Run Index</p>
@@ -117,7 +119,7 @@ export default async function RunsPage({
           <p className="empty-state">No exported runs were found.</p>
         </section>
       ) : (
-        <RunsTable rows={rows} />
+        <RunsTable rows={visibleRows} />
       )}
     </main>
   );

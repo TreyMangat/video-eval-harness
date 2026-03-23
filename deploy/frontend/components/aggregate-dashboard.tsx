@@ -10,6 +10,7 @@ import {
   getSweepData,
   modelColor,
 } from "../lib/analysis";
+import { isVisibleRun } from "../lib/run-visibility";
 import { getRunType } from "../lib/run-type";
 import type { RunListItem, RunPayload } from "../lib/types";
 import { AggregateLeaderboardClient } from "./aggregate-leaderboard-client";
@@ -274,23 +275,12 @@ function hasSegmentData(run: RunPayload): boolean {
   return (run.results?.length ?? 0) > 0 || (run.segments?.length ?? 0) > 0;
 }
 
-function normalizedRunSearchText(run: RunPayload): string {
-  return [run.config.display_name, run.run_id].filter(Boolean).join(" ").toLowerCase();
-}
-
-function hasNoisyRunName(run: RunPayload): boolean {
-  const normalized = normalizedRunSearchText(run);
-  return ["debug", "e2e", "test", "cors", "stage", "fix"].some((token) =>
-    normalized.includes(token)
-  );
-}
-
 function isQualityAggregateRun(run: RunPayload): boolean {
-  const summaryModelCount = Object.keys(run.summaries ?? {}).length;
-  if (summaryModelCount < 2 || !hasSegmentData(run)) {
+  if (!isVisibleRun(run)) {
     return false;
   }
-  if (hasNoisyRunName(run)) {
+  const summaryModelCount = Object.keys(run.summaries ?? {}).length;
+  if (summaryModelCount < 2 || !hasSegmentData(run)) {
     return false;
   }
 
@@ -607,9 +597,10 @@ export function AggregateDashboard({
   dataDir?: string;
 }) {
   const runPayloadById = new Map(runs.map((run) => [run.run_id, run]));
+  const visibleRuns = runs.filter(isVisibleRun);
+  const visibleRunIds = new Set(visibleRuns.map((run) => run.run_id));
   const qualityRuns = runs.filter(isQualityAggregateRun);
-  const qualityRunIds = new Set(qualityRuns.map((run) => run.run_id));
-  const recentRuns = runList.filter((run) => qualityRunIds.has(run.run_id)).slice(0, 10);
+  const recentRuns = runList.filter((run) => visibleRunIds.has(run.run_id)).slice(0, 10);
   const accuracyRuns = qualityRuns.filter(runHasAccuracyData);
   const aggregateStats = computeAggregateStats(qualityRuns);
   const leaderboard = computeAggregateLeaderboard(qualityRuns);
@@ -666,8 +657,8 @@ export function AggregateDashboard({
             <p className="chart-desc">
               Aggregate cards and charts use {aggregateStats.total_runs} quality runs from the full
               merged history (committed static exports plus live Modal runs). Single-model runs,
-              empty runs, noisy debug-style runs, and models with 0% parse success are filtered out
-              before aggregation.
+              empty runs, hidden internal test/debug runs, and models with 0% parse success are
+              filtered out before aggregation.
             </p>
           </div>
         </section>
@@ -768,7 +759,7 @@ export function AggregateDashboard({
           <div className="recent-runs-grid">
             {recentRuns.map((run) => {
               const runPayload = runPayloadById.get(run.run_id);
-              const segmentCount = runPayload?.segments.length;
+              const segmentCount = runPayload?.segments?.length;
               const runBadgeSource = runPayload ?? run;
 
               return (
