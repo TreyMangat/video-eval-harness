@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -10,11 +10,21 @@ const targetDataDir = path.join(publicDir, "data");
 
 mkdirSync(publicDir, { recursive: true });
 rmSync(targetDataDir, { recursive: true, force: true });
+mkdirSync(targetDataDir, { recursive: true });
+writeFileSync(path.join(targetDataDir, ".gitkeep"), "");
 
 if (!existsSync(sourceDataDir)) {
   console.log("No repo data/ directory found; skipping static data copy.");
   process.exit(0);
 }
 
-cpSync(sourceDataDir, targetDataDir, { recursive: true });
-console.log(`Copied static run data from ${sourceDataDir} to ${targetDataDir}.`);
+const runFiles = readdirSync(sourceDataDir, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /_results\.json$/i.test(entry.name))
+  .map((entry) => entry.name)
+  .sort();
+
+for (const fileName of runFiles) {
+  copyFileSync(path.join(sourceDataDir, fileName), path.join(targetDataDir, fileName));
+}
+
+console.log(`Copied ${runFiles.length} static run JSON files from ${sourceDataDir} to ${targetDataDir}.`);

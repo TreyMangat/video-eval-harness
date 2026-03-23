@@ -27,6 +27,12 @@ function readFirst(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function buildQuery(
   runId: string,
   options: {
@@ -77,17 +83,21 @@ export default async function RunSegmentsPage({
   }
 
   const sweepData = getSweepData(run);
+  const runModels = Array.isArray(run.models) ? run.models : [];
+  const runSegments = Array.isArray(run.segments) ? run.segments : [];
+  const runResults = Array.isArray(run.results) ? run.results : [];
+  const configuredVideoIds = safeStringArray(run.config?.video_ids);
   const segmentsByVideo = groupSegmentsByVideo(run);
-  const videoIds = Object.keys(segmentsByVideo).sort();
+  const videoIds = [...new Set([...Object.keys(segmentsByVideo), ...configuredVideoIds])].sort();
   const selectedVideoId = readFirst(resolvedSearchParams.video) ?? videoIds[0];
   const selectedVideoSegments = segmentsByVideo[selectedVideoId] ?? [];
   const defaultVariant = sweepData?.variants[0] ?? ALL_VARIANTS;
   const selectedVariant = readFirst(resolvedSearchParams.variant) ?? defaultVariant;
   const selectedVariantId =
     sweepData && selectedVariant !== ALL_VARIANTS
-      ? sweepData.variant_id_by_label[selectedVariant] ?? null
+      ? sweepData.variant_id_by_label?.[selectedVariant] ?? null
       : null;
-  const modelOrder = new Map(run.models.map((modelName, index) => [modelName, index]));
+  const modelOrder = new Map(runModels.map((modelName, index) => [modelName, index]));
   const segmentStories = await Promise.all(
     selectedVideoSegments.map(async (segment) => {
       const media = await loadSegmentMedia(
@@ -96,7 +106,7 @@ export default async function RunSegmentsPage({
         selectedVariantId,
         dataDir
       );
-      const results = run.results
+      const results = runResults
         .filter((result) => result.segment_id === segment.segment_id)
         .filter((result) =>
           selectedVariant === ALL_VARIANTS ? true : resultVariantLabel(result) === selectedVariant
@@ -119,14 +129,14 @@ export default async function RunSegmentsPage({
       <RunMetadataCard
         title="Run Context"
         runId={run.run_id}
-        createdAt={run.config.created_at}
+        createdAt={run.config?.created_at ?? ""}
         videoLabel=""
-        promptVersion={run.config.prompt_version}
-        models={run.models}
-        segments={run.segments.length}
+        promptVersion={run.config?.prompt_version ?? ""}
+        models={runModels}
+        segments={runSegments.length}
         compact
         compactText={[
-          displayRunName(run.run_id, run.config.created_at),
+          displayRunName(run.run_id, run.config?.created_at),
           selectedVideoId ? displayVideoName(selectedVideoId) : "No video",
           selectedVariant,
         ].join(" \u00b7 ")}
@@ -156,7 +166,7 @@ export default async function RunSegmentsPage({
             <label className="field">
               <span>Variant</span>
               <select name="variant" defaultValue={selectedVariant}>
-                {sweepData ? (
+                {sweepData?.variants?.length ? (
                   <>
                     {sweepData.variants.map((variant) => (
                       <option key={variant} value={variant}>
@@ -231,7 +241,7 @@ export default async function RunSegmentsPage({
                   <h3>{displaySegmentName(segment)}</h3>
                   <p className="segment-story-meta">
                     {formatTime(segment.start_time_s)} - {formatTime(segment.end_time_s)} |{" "}
-                    {Math.round(segment.duration_s)}s | {segment.frame_count} extracted frames
+                    {Math.round(segment.duration_s ?? 0)}s | {segment.frame_count ?? 0} extracted frames
                   </p>
                 </div>
                 <div className="story-badge-stack">
@@ -245,7 +255,7 @@ export default async function RunSegmentsPage({
                 </div>
               </div>
 
-              {media?.frames.length ? (
+              {Array.isArray(media?.frames) && media.frames.length > 0 ? (
                 <div className="segment-thumb-row">
                   {media.frames.map((frame) => (
                     <figure
@@ -270,58 +280,66 @@ export default async function RunSegmentsPage({
 
               <div className="segment-answer-grid">
                 {results.map((result) => (
-                  <article
-                    key={`${segment.segment_id}-${result.model_name}-${resultVariantLabel(result)}`}
-                    className="segment-answer-card"
-                    style={{ borderTopColor: modelColor(result.model_name) }}
-                  >
-                    <div className="segment-answer-head">
-                      <div>
-                        <p className="segment-answer-model">{result.model_name}</p>
-                        {selectedVariant === ALL_VARIANTS && sweepData ? (
-                          <p className="segment-answer-variant">{resultVariantLabel(result)}</p>
+                  (() => {
+                    const modelName = result.model_name || "unknown-model";
+                    const secondaryActions = safeStringArray(result.secondary_actions);
+                    const objects = safeStringArray(result.objects);
+
+                    return (
+                      <article
+                        key={`${segment.segment_id}-${modelName}-${resultVariantLabel(result)}`}
+                        className="segment-answer-card"
+                        style={{ borderTopColor: modelColor(modelName) }}
+                      >
+                        <div className="segment-answer-head">
+                          <div>
+                            <p className="segment-answer-model">{modelName}</p>
+                            {selectedVariant === ALL_VARIANTS && sweepData ? (
+                              <p className="segment-answer-variant">{resultVariantLabel(result)}</p>
+                            ) : null}
+                          </div>
+                          <span className={`parse-badge ${result.parsed_success ? "ok" : "fail"}`}>
+                            {result.parsed_success ? "Parsed" : "Failed"}
+                          </span>
+                        </div>
+
+                        <p className="segment-answer-primary">{result.primary_action || "-"}</p>
+                        <p className="segment-answer-secondary">
+                          Confidence{" "}
+                          {result.confidence == null ? "-" : result.confidence.toFixed(2)} |{" "}
+                          {formatLatency(result.latency_ms)} | {formatMoney(result.estimated_cost)}
+                        </p>
+                        <p className="segment-answer-description">
+                          {result.description || result.parse_error || "No description returned."}
+                        </p>
+
+                        {secondaryActions.length ? (
+                          <div className="tag-list">
+                            {secondaryActions.map((action) => (
+                              <span key={`${modelName}-${action}`} className="action-tag">
+                                {action}
+                              </span>
+                            ))}
+                          </div>
                         ) : null}
-                      </div>
-                      <span className={`parse-badge ${result.parsed_success ? "ok" : "fail"}`}>
-                        {result.parsed_success ? "Parsed" : "Failed"}
-                      </span>
-                    </div>
 
-                    <p className="segment-answer-primary">{result.primary_action || "-"}</p>
-                    <p className="segment-answer-secondary">
-                      Confidence{" "}
-                      {result.confidence == null ? "-" : result.confidence.toFixed(2)} |{" "}
-                      {formatLatency(result.latency_ms)} | {formatMoney(result.estimated_cost)}
-                    </p>
-                    <p className="segment-answer-description">
-                      {result.description || result.parse_error || "No description returned."}
-                    </p>
+                        {objects.length ? (
+                          <div className="tag-list">
+                            {objects.map((objectName) => (
+                              <span key={`${modelName}-${objectName}`} className="object-tag">
+                                {objectName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
 
-                    {result.secondary_actions.length ? (
-                      <div className="tag-list">
-                        {result.secondary_actions.map((action) => (
-                          <span key={`${result.model_name}-${action}`} className="action-tag">
-                            {action}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {result.objects.length ? (
-                      <div className="tag-list">
-                        {result.objects.map((objectName) => (
-                          <span key={`${result.model_name}-${objectName}`} className="object-tag">
-                            {objectName}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="segment-answer-footer">
-                      <span>Parse {formatPercent(result.parsed_success ? 1 : 0)}</span>
-                      <span>{result.provider}</span>
-                    </div>
-                  </article>
+                        <div className="segment-answer-footer">
+                          <span>Parse {formatPercent(result.parsed_success ? 1 : 0)}</span>
+                          <span>{result.provider || "Unknown provider"}</span>
+                        </div>
+                      </article>
+                    );
+                  })()
                 ))}
               </div>
             </section>

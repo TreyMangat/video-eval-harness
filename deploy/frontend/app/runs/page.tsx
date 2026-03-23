@@ -15,31 +15,45 @@ function readFirst(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function buildRunsTableRow(
   run: {
     run_id: string;
     created_at: string;
-    models: string[];
-    video_ids: string[];
-    run_type?: "comparison" | "accuracy_test" | null;
+    models?: string[] | null;
+    video_ids?: string[] | null;
+    run_type?: "comparison" | "accuracy_test" | "benchmark" | null | string;
   },
   dataDir: string | undefined,
   options?: {
     bestAgreement?: number | null;
     bestModelName?: string | null;
-    runType?: "comparison" | "accuracy_test" | null;
+    runType?: "comparison" | "accuracy_test" | "benchmark" | null | string;
     hasAccuracy?: boolean;
   }
 ): RunsTableRow {
+  const models = safeStringArray(run.models);
+  const videoIds = safeStringArray(run.video_ids);
+
   return {
     run_id: run.run_id,
     display_name: displayRunName(run.run_id, run.created_at),
     created_at: run.created_at,
-    models: run.models,
-    video_names: run.video_ids.map((videoId) => displayVideoName(videoId)),
+    models,
+    video_names: videoIds.map((videoId) => displayVideoName(videoId)),
     best_agreement: options?.bestAgreement ?? null,
     best_model_name: options?.bestModelName ?? null,
-    run_type: options?.runType ?? run.run_type ?? null,
+    run_type:
+      options?.runType === "benchmark" || options?.runType === "comparison" || options?.runType === "accuracy_test"
+        ? options.runType
+        : run.run_type === "benchmark" || run.run_type === "comparison" || run.run_type === "accuracy_test"
+          ? run.run_type
+          : null,
     has_accuracy: options?.hasAccuracy ?? false,
     data_dir: dataDir,
   };

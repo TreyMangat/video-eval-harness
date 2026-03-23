@@ -39,8 +39,15 @@ export default async function RunSweepPage({
   }
 
   const sweepData = getSweepData(run);
+  const runModels = Array.isArray(run.models) ? run.models : [];
+  const runSegments = Array.isArray(run.segments) ? run.segments : [];
+  const sweepVariants = Array.isArray(sweepData?.variants) ? sweepData.variants : [];
+  const agreementByVariant =
+    sweepData?.agreement_by_variant && typeof sweepData.agreement_by_variant === "object"
+      ? sweepData.agreement_by_variant
+      : {};
   const stableLeader =
-    sweepData?.stability
+    (sweepData?.stability ?? [])
       .slice()
       .sort(
         (left, right) =>
@@ -64,11 +71,11 @@ export default async function RunSweepPage({
         <RunMetadataCard
           title="Run Context"
           runId={run.run_id}
-          createdAt={run.config.created_at}
+          createdAt={run.config?.created_at ?? ""}
           videoLabel=""
-          promptVersion={run.config.prompt_version}
-          models={run.models}
-          segments={run.segments.length}
+          promptVersion={run.config?.prompt_version ?? ""}
+          models={runModels}
+          segments={runSegments.length}
           compact
           compactText={runBreadcrumb(run)}
         />
@@ -79,9 +86,9 @@ export default async function RunSweepPage({
           <VariantHeatmapCard
             title="Which variants parse most reliably?"
             description="Parse-success matrix across all extraction variants."
-            models={run.models}
-            variants={sweepData.variants}
-            matrix={buildParseSuccessMatrix(sweepData, run.models, sweepData.variants)}
+            models={runModels}
+            variants={sweepVariants}
+            matrix={buildParseSuccessMatrix(sweepData, runModels, sweepVariants)}
           />
 
           {stableLeader ? (
@@ -94,10 +101,10 @@ export default async function RunSweepPage({
           <StabilityTableCard
             title="Which model stays most consistent across variants?"
             description="Self-agreement and ranking stability across the sweep."
-            stability={sweepData.stability}
+            stability={sweepData.stability ?? []}
           />
 
-          {Object.entries(sweepData.agreement_by_variant)
+          {Object.entries(agreementByVariant)
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([variant, matrix]) => (
               <AgreementMatrixCard

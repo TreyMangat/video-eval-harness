@@ -35,9 +35,14 @@ export default async function RunCostPage({
   }
 
   const sweepData = getSweepData(run);
+  const runModels = Array.isArray(run.models) ? run.models : [];
+  const runSegments = Array.isArray(run.segments) ? run.segments : [];
+  const runResults = Array.isArray(run.results) ? run.results : [];
   const costs = buildCostBreakdown(run, sweepData);
-  const hasCapturedCost = run.results.some((result) => (result.estimated_cost ?? 0) > 0);
-  const segmentLookup = new Map(run.segments.map((segment) => [segment.segment_id, segment] as const));
+  const hasCapturedCost = runResults.some((result) => (result.estimated_cost ?? 0) > 0);
+  const segmentLookup = new Map(
+    runSegments.map((segment) => [segment.segment_id, segment] as const)
+  );
 
   return (
     <main className="analysis-shell">
@@ -54,11 +59,11 @@ export default async function RunCostPage({
         <RunMetadataCard
           title="Run Context"
           runId={run.run_id}
-          createdAt={run.config.created_at}
+          createdAt={run.config?.created_at ?? ""}
           videoLabel=""
-          promptVersion={run.config.prompt_version}
-          models={run.models}
-          segments={run.segments.length}
+          promptVersion={run.config?.prompt_version ?? ""}
+          models={runModels}
+          segments={runSegments.length}
           compact
           compactText={runBreadcrumb(run)}
         />
@@ -79,14 +84,14 @@ export default async function RunCostPage({
             <article className="summary-card">
               <p className="card-label">Cost / Segment</p>
               <p className="card-value">
-                {run.segments.length > 0 ? formatMoney(costs.total_cost / run.segments.length) : "-"}
+                {runSegments.length > 0 ? formatMoney(costs.total_cost / runSegments.length) : "-"}
               </p>
-              <span className="card-sublabel">Average across {run.segments.length} segments</span>
+              <span className="card-sublabel">Average across {runSegments.length} segments</span>
             </article>
             <article className="summary-card">
               <p className="card-label">Costed Rows</p>
               <p className="card-value">
-                {run.results.filter((result) => (result.estimated_cost ?? 0) > 0).length}
+                {runResults.filter((result) => (result.estimated_cost ?? 0) > 0).length}
               </p>
               <span className="card-sublabel">Results with captured cost data</span>
             </article>
