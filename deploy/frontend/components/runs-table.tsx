@@ -182,7 +182,7 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                       })}
                       className="segments-link"
                     >
-                      {row.segment_count ?? "\u2014"} segments \u2192
+                      {row.segment_count ?? "\u2014"} segments {"\u2192"}
                     </Link>
                   </td>
                   <td data-label="Quick Stats">
