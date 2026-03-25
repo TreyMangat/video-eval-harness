@@ -76,7 +76,7 @@ def run_benchmark_job(
     image=image,
     volumes={"/data": volume},
     secrets=[modal.Secret.from_name("openrouter-key")],
-    timeout=300,
+    timeout=900,
     min_containers=1,
     memory=512,
     cpu=1,

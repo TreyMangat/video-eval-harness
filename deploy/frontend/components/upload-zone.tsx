@@ -23,7 +23,7 @@ const API_WARMUP_ATTEMPTS = 12;
 const API_WARMUP_INTERVAL_MS = 5_000;
 const API_WARMUP_TIMEOUT_MS = 8_000;
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
-  max_clip_s: 60,
+  max_clip_s: 600,
   max_file_size_mb: 100,
   max_models: DEFAULT_MODEL_CATALOG.length,
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
@@ -51,6 +51,15 @@ function isAcceptedFile(file: File): boolean {
 
 function formatFileSize(file: File): string {
   return `${(file.size / 1_048_576).toFixed(1)}MB`;
+}
+
+function formatClipLimit(maxClipS: number): string {
+  if (maxClipS >= 60 && maxClipS % 60 === 0) {
+    const minutes = maxClipS / 60;
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  return `${maxClipS} seconds`;
 }
 
 function fallbackModelOptions(): ApiModel[] {
@@ -700,8 +709,8 @@ export function UploadZone() {
               <p className="upload-inline-title">Drop a short video clip here</p>
               <p className="upload-inline-copy">or click to browse</p>
               <p className="upload-inline-note">
-                Max {limits.max_clip_s} seconds | Max {limits.max_file_size_mb}MB | up to{" "}
-                {maxModels} models
+                Max {formatClipLimit(limits.max_clip_s)} | Max {limits.max_file_size_mb}MB | up
+                to {maxModels} models
               </p>
               <div className="upload-inline-type-list" aria-label="Supported file types">
                 {ACCEPTED_TYPES.map((type) => (

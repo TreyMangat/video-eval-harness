@@ -39,12 +39,13 @@ ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ALLOWED_RUN_TYPES = {"comparison", "accuracy_test"}
 ALLOWED_BENCHMARK_MODES = {"coarse", "dense"}
 ESTIMATED_TIME_S = 90
+MAX_CLIP_DURATION_S = 600
 
 try:
     from video_eval_harness.limits import PUBLIC_LIMITS
 except Exception:  # pragma: no cover - fallback only used if limits.py is unavailable
     PUBLIC_LIMITS = {
-        "max_clip_duration_s": 60,
+        "max_clip_duration_s": MAX_CLIP_DURATION_S,
         "max_file_size_mb": 100,
         "max_segments": 6,
         "max_models": 3,
@@ -161,6 +162,7 @@ PUBLIC_MODEL_CATALOG: list[dict[str, Any]] = [
 
 API_PUBLIC_LIMITS = {
     **PUBLIC_LIMITS,
+    "max_clip_duration_s": MAX_CLIP_DURATION_S,
     "max_models": len(PUBLIC_MODEL_CATALOG),
     "allowed_models": [str(model["name"]) for model in PUBLIC_MODEL_CATALOG],
 }

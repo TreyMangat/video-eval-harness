@@ -43,7 +43,7 @@ type JobState = {
 };
 
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
-  max_clip_s: 60,
+  max_clip_s: 600,
   max_file_size_mb: 100,
   max_models: DEFAULT_MODEL_CATALOG.length,
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
