@@ -13,6 +13,9 @@ export type RunTypeLike = {
   ground_truth?: unknown;
   has_accuracy?: boolean;
   has_ground_truth?: boolean;
+  has_dense?: boolean;
+  labeling_mode?: string | null;
+  results?: Array<{ action_label?: unknown; labeling_mode?: string | null }> | null;
   summaries?: Record<string, SummaryLike> | null;
   config?: Record<string, unknown> | null;
 };
@@ -44,6 +47,33 @@ function hasGroundTruthSignal(run: RunTypeLike): boolean {
     return true;
   }
   return Boolean(run.config && "ground_truth" in run.config && run.config.ground_truth);
+}
+
+export function isDenseRun(run: RunTypeLike): boolean {
+  if (run.has_dense) {
+    return true;
+  }
+  if (typeof run.labeling_mode === "string" && run.labeling_mode.trim().toLowerCase() === "dense") {
+    return true;
+  }
+
+  const configLabelingMode = run.config?.labeling_mode;
+  if (
+    typeof configLabelingMode === "string" &&
+    configLabelingMode.trim().toLowerCase() === "dense"
+  ) {
+    return true;
+  }
+
+  return (
+    Array.isArray(run.results) &&
+    run.results.some(
+      (result) =>
+        result?.action_label != null ||
+        (typeof result?.labeling_mode === "string" &&
+          result.labeling_mode.trim().toLowerCase() === "dense")
+    )
+  );
 }
 
 export function getRunType(run: RunTypeLike): ResolvedRunType {

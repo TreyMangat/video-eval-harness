@@ -17,6 +17,9 @@ export type RunsTableRow = {
   best_model_name: string | null;
   run_type?: "comparison" | "accuracy_test" | "benchmark" | null;
   has_accuracy?: boolean;
+  has_dense?: boolean;
+  labeling_mode?: string | null;
+  segment_count?: number | null;
   data_dir?: string;
 };
 
@@ -149,6 +152,7 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                 <th>Date</th>
                 <th>Models</th>
                 <th>Videos</th>
+                <th>Labels</th>
                 <th>Quick Stats</th>
                 <th>Actions</th>
               </tr>
@@ -170,6 +174,16 @@ export function RunsTable({ rows }: { rows: RunsTableRow[] }) {
                   </td>
                   <td data-label="Videos" title={row.video_names.join(", ")}>
                     {row.video_names.length} {row.video_names.length === 1 ? "video" : "videos"}
+                  </td>
+                  <td data-label="Labels">
+                    <Link
+                      href={buildHref(`/runs/${row.run_id}/segments`, {
+                        dataDir: row.data_dir,
+                      })}
+                      className="segments-link"
+                    >
+                      {row.segment_count ?? "\u2014"} segments \u2192
+                    </Link>
                   </td>
                   <td data-label="Quick Stats">
                     <div className="quick-stat-cell">

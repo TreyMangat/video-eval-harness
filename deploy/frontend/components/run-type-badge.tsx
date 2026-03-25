@@ -1,4 +1,10 @@
-import { getRunType, getRunTypeBadgeClass, getRunTypeLabel, type RunTypeLike } from "../lib/run-type";
+import {
+  getRunType,
+  getRunTypeBadgeClass,
+  getRunTypeLabel,
+  isDenseRun,
+  type RunTypeLike,
+} from "../lib/run-type";
 
 export function RunTypeBadge({
   run,
@@ -8,9 +14,15 @@ export function RunTypeBadge({
   className?: string;
 }) {
   const runType = getRunType(run);
-  const classes = ["run-type-badge", getRunTypeBadgeClass(runType), className]
+  const wrapperClasses = ["run-type-badge-group", className].filter(Boolean).join(" ");
+  const primaryBadgeClasses = ["run-type-badge", getRunTypeBadgeClass(runType)]
     .filter(Boolean)
     .join(" ");
 
-  return <span className={classes}>{getRunTypeLabel(runType)}</span>;
+  return (
+    <span className={wrapperClasses}>
+      <span className={primaryBadgeClasses}>{getRunTypeLabel(runType)}</span>
+      {isDenseRun(run) ? <span className="run-type-badge badge-dense">Dense</span> : null}
+    </span>
+  );
 }

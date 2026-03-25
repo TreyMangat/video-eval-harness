@@ -56,10 +56,27 @@ function buildQuery(
 }
 
 function segmentHasDisagreement(
-  results: Array<{ primary_action: string | null }>
+  results: Array<{
+    primary_action: string | null;
+    action_label?: { action?: string | null } | null;
+  }>
 ): boolean {
-  const actions = [...new Set(results.map((result) => result.primary_action?.trim()).filter(Boolean))];
+  const actions = [
+    ...new Set(
+      results
+        .map((result) => result.action_label?.action?.trim() || result.primary_action?.trim())
+        .filter(Boolean)
+    ),
+  ];
   return actions.length > 1;
+}
+
+function formatConfidenceLabel(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "-";
+  }
+  const normalized = value > 1 ? value / 100 : value;
+  return formatPercent(Math.max(0, Math.min(1, normalized)));
 }
 
 export default async function RunSegmentsPage({
@@ -97,6 +114,13 @@ export default async function RunSegmentsPage({
     sweepData && selectedVariant !== ALL_VARIANTS
       ? sweepData.variant_id_by_label?.[selectedVariant] ?? null
       : null;
+  const isDenseMode =
+    run.labeling_mode === "dense" ||
+    run.config?.labeling_mode === "dense" ||
+    runResults.some(
+      (result) =>
+        result.action_label != null || result.labeling_mode?.trim().toLowerCase() === "dense"
+    );
   const modelOrder = new Map(runModels.map((modelName, index) => [modelName, index]));
   const segmentStories = await Promise.all(
     selectedVideoSegments.map(async (segment) => {
@@ -303,11 +327,22 @@ export default async function RunSegmentsPage({
                           </span>
                         </div>
 
-                        <p className="segment-answer-primary">{result.primary_action || "-"}</p>
+                        {isDenseMode && result.action_label ? (
+                          <div className="segment-answer-primary is-dense">
+                            <div className="dense-label">
+                              <span className="verb-tag">{result.action_label.verb}</span>
+                              <span className="noun-tag">{result.action_label.noun}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="segment-answer-primary">{result.primary_action || "-"}</p>
+                        )}
                         <p className="segment-answer-secondary">
                           Confidence{" "}
-                          {result.confidence == null ? "-" : result.confidence.toFixed(2)} |{" "}
-                          {formatLatency(result.latency_ms)} | {formatMoney(result.estimated_cost)}
+                          {formatConfidenceLabel(
+                            result.action_label?.confidence ?? result.confidence
+                          )}{" "}
+                          | {formatLatency(result.latency_ms)} | {formatMoney(result.estimated_cost)}
                         </p>
                         <p className="segment-answer-description">
                           {result.description || result.parse_error || "No description returned."}

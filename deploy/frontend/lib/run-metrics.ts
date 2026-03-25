@@ -1,4 +1,5 @@
 import type {
+  ActionLabel,
   LabelResult,
   ModelSummary,
   RunPayload,
@@ -103,7 +104,32 @@ function parseList(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function parseActionLabel(value: unknown): ActionLabel | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const verb = asString(record.verb).trim();
+  const noun = asString(record.noun).trim();
+  const action = asString(record.action).trim() || [verb, noun].filter(Boolean).join(" ").trim();
+
+  if (!verb && !noun && !action) {
+    return null;
+  }
+
+  return {
+    verb,
+    noun,
+    verb_class: parseNumber(record.verb_class),
+    noun_class: parseNumber(record.noun_class),
+    action,
+    confidence: parseNumber(record.confidence),
+  };
+}
+
 export function parseLabelResultRecord(record: ResultRecord): LabelResult {
+  const actionLabel = parseActionLabel(record.action_label);
   return {
     run_id: asString(record.run_id),
     video_id: asString(record.video_id),
@@ -130,6 +156,10 @@ export function parseLabelResultRecord(record: ResultRecord): LabelResult {
     num_frames_used: parseInteger(record.num_frames_used),
     sampling_method_used: asString(record.sampling_method_used),
     sweep_id: asString(record.sweep_id),
+    action_label: actionLabel,
+    labeling_mode:
+      asString(record.labeling_mode) ||
+      (actionLabel ? "dense" : "coarse"),
     timestamp: asString(record.timestamp) || null,
   };
 }
@@ -548,6 +578,13 @@ export function buildRunPayload(
 ): RunPayload {
   const models = [...new Set(results.map((result) => result.model_name))].sort();
   const videoIds = [...new Set(results.map((result) => result.video_id))];
+  const labelingMode = results.some(
+    (result) =>
+      result.action_label != null ||
+      result.labeling_mode?.trim().toLowerCase() === "dense"
+  )
+    ? "dense"
+    : "coarse";
   const createdAt =
     results
       .map((result) => result.timestamp)
@@ -556,6 +593,7 @@ export function buildRunPayload(
 
   return {
     run_id: runId,
+    labeling_mode: labelingMode,
     config: {
       models,
       prompt_version:
@@ -565,6 +603,7 @@ export function buildRunPayload(
       extraction_config: {},
       video_ids: videoIds,
       created_at: createdAt,
+      labeling_mode: labelingMode,
     },
     models,
     videos: buildVideos(results),

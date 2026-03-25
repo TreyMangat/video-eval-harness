@@ -22,6 +22,35 @@ function safeStringArray(value: unknown): string[] {
     : [];
 }
 
+function countSegments(
+  payload:
+    | {
+        segments?: Array<{ segment_id?: string | null }> | null;
+        results?: Array<{ segment_id?: string | null; video_id?: string | null; start_time_s?: number | null }> | null;
+      }
+    | null
+    | undefined
+): number | null {
+  if (Array.isArray(payload?.segments) && payload.segments.length > 0) {
+    return payload.segments.length;
+  }
+
+  if (!Array.isArray(payload?.results) || payload.results.length === 0) {
+    return null;
+  }
+
+  const uniqueSegments = new Set(
+    payload.results.map((result) => {
+      const segmentId = result.segment_id?.trim();
+      if (segmentId) {
+        return segmentId;
+      }
+      return `${result.video_id ?? "unknown"}:${result.start_time_s ?? 0}`;
+    })
+  );
+  return uniqueSegments.size;
+}
+
 function buildRunsTableRow(
   run: {
     run_id: string;
@@ -36,6 +65,9 @@ function buildRunsTableRow(
     bestModelName?: string | null;
     runType?: "comparison" | "accuracy_test" | "benchmark" | null | string;
     hasAccuracy?: boolean;
+    hasDense?: boolean;
+    labelingMode?: string | null;
+    segmentCount?: number | null;
   }
 ): RunsTableRow {
   const models = safeStringArray(run.models);
@@ -56,6 +88,9 @@ function buildRunsTableRow(
           ? run.run_type
           : null,
     has_accuracy: options?.hasAccuracy ?? false,
+    has_dense: options?.hasDense ?? false,
+    labeling_mode: options?.labelingMode ?? null,
+    segment_count: options?.segmentCount ?? null,
     data_dir: dataDir,
   };
 }
@@ -84,6 +119,25 @@ export default async function RunsPage({
           hasAccuracy: comparisonRows.some(
             (row) => row.accuracy != null || row.llm_accuracy != null
           ),
+          hasDense:
+            payload?.labeling_mode === "dense" ||
+            payload?.config?.labeling_mode === "dense" ||
+            (Array.isArray(payload?.results) &&
+              payload.results.some(
+                (result) =>
+                  result.action_label != null || result.labeling_mode === "dense"
+              )),
+          labelingMode:
+            payload?.labeling_mode ??
+            payload?.config?.labeling_mode ??
+            (Array.isArray(payload?.results) &&
+            payload.results.some(
+              (result) =>
+                result.action_label != null || result.labeling_mode === "dense"
+            )
+              ? "dense"
+              : null),
+          segmentCount: countSegments(payload),
         });
       })
     )

@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   AgreementMatrixCard,
   RunMetadataCard,
-  SegmentComparisonSamplesCard,
   StabilityTableCard,
   VariantHeatmapCard,
 } from "../../../components/analysis-panels";
@@ -15,7 +14,8 @@ import {
   buildCoreComparisonRows,
   buildParseSuccessMatrix,
   displayRunName,
-  displaySegmentName,
+  displayVideoName,
+  filterResultsByVariant,
   fastestModel,
   formatLatency,
   formatMoney,
@@ -26,7 +26,6 @@ import {
   modelColor,
   runBreadcrumb,
   selectFeaturedVariant,
-  selectSampleSegments,
 } from "../../../lib/analysis";
 import { getRunType } from "../../../lib/run-type";
 import { loadRun } from "../../../lib/run-source";
@@ -55,12 +54,130 @@ type AccuracyEntry = {
   avg_latency_ms: number | null;
 };
 
+type ReportSegment = {
+  segment_id: string;
+  video_id: string;
+  video_name: string;
+  segment_index: number | null;
+  start_s: number;
+  end_s: number;
+};
+
 function readFirst(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
 function toNullableNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function formatConfidence(value: number | null | undefined): string | null {
+  if (value == null || !Number.isFinite(value)) {
+    return null;
+  }
+  const normalized = value > 1 ? value / 100 : value;
+  return `${Math.round(Math.max(0, Math.min(1, normalized)) * 100)}%`;
+}
+
+function normalizeReportSegments(segments: SegmentSummary[]): ReportSegment[] {
+  return (segments || []).map((segment) => ({
+      segment_id: segment.segment_id,
+      video_id: segment.video_id,
+      video_name: displayVideoName(segment.video_id),
+      segment_index: segment.segment_index,
+      start_s: segment.start_time_s,
+      end_s: segment.end_time_s,
+    }))
+    .sort(
+      (left, right) =>
+        left.video_id.localeCompare(right.video_id) || left.start_s - right.start_s
+    );
+}
+
+function getUniqueSegments(results: LabelResult[]): ReportSegment[] {
+  const seen = new Map<string, ReportSegment>();
+
+  for (const result of results) {
+    const key =
+      result.segment_id?.trim() || `${result.video_id}_${safeNumber(result.start_time_s)}`;
+
+    if (!seen.has(key)) {
+      seen.set(key, {
+        segment_id: result.segment_id,
+        video_id: result.video_id,
+        video_name: displayVideoName(result.video_id),
+        segment_index: null,
+        start_s: safeNumber(result.start_time_s),
+        end_s: safeNumber(result.end_time_s),
+      });
+    }
+  }
+
+  return [...seen.values()].sort(
+    (left, right) =>
+      left.video_id.localeCompare(right.video_id) || left.start_s - right.start_s
+  );
+}
+
+function collectAgreementValues(value: unknown, metricKeys: string[]): number[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectAgreementValues(entry, metricKeys));
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const directValues = (metricKeys || []).map((key) => toNullableNumber(record[key])).filter(
+    (entry): entry is number => entry != null && entry >= 0 && entry <= 1
+  );
+  const nestedValues = Object.entries(record || {}).filter(([key]) => !metricKeys.includes(key)).flatMap(
+    ([, entry]) => collectAgreementValues(entry, metricKeys)
+  );
+
+  return [...directValues, ...nestedValues];
+}
+
+function summarizeTaxonomyAgreement(value: unknown): {
+  verb: number | null;
+  noun: number | null;
+  action: number | null;
+} | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const verb = average(
+    collectAgreementValues(value, ["verb_agreement", "avg_verb_agreement", "mean_verb_agreement"])
+  );
+  const noun = average(
+    collectAgreementValues(value, ["noun_agreement", "avg_noun_agreement", "mean_noun_agreement"])
+  );
+  const action = average(
+    collectAgreementValues(value, [
+      "action_agreement",
+      "avg_action_agreement",
+      "mean_action_agreement",
+    ])
+  );
+
+  if (verb == null && noun == null && action == null) {
+    return null;
+  }
+
+  return { verb, noun, action };
 }
 
 function accuracyMetricForModel(
@@ -157,8 +274,7 @@ function resolveAccuracyEntry(run: RunPayload, modelName: string): AccuracyEntry
 
 function buildAccuracyEntries(run: RunPayload): AccuracyEntry[] {
   const models = Array.isArray(run.models) ? run.models : [];
-  return [...models]
-    .map((modelName) => resolveAccuracyEntry(run, modelName))
+  return (models || []).map((modelName) => resolveAccuracyEntry(run, modelName))
     .sort((left, right) => {
       const leftScore = left.score ?? Number.NEGATIVE_INFINITY;
       const rightScore = right.score ?? Number.NEGATIVE_INFINITY;
@@ -194,8 +310,7 @@ function accuracyPerDollar(entry: AccuracyEntry): number | null {
 }
 
 function bestAccuracyValueEntry(entries: AccuracyEntry[]): AccuracyEntry | null {
-  return [...entries]
-    .filter((entry) => accuracyPerDollar(entry) != null)
+  return (entries || []).filter((entry) => accuracyPerDollar(entry) != null)
     .sort((left, right) => {
       const leftRatio = accuracyPerDollar(left) ?? Number.NEGATIVE_INFINITY;
       const rightRatio = accuracyPerDollar(right) ?? Number.NEGATIVE_INFINITY;
@@ -248,72 +363,8 @@ function accuracyVerdictSentence(
   return `In ${runLabel}, ${bestAccuracy.model_name} scored ${formatPercent(bestAccuracy.score)} accuracy against ${hasGroundTruth ? "your labels" : "the available ground truth"}${modelCount > 1 ? `, out of ${modelCount} models tested` : ""}.`;
 }
 
-function normalizeLabelText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function labelTokens(value: string): string[] {
-  return normalizeLabelText(value)
-    .split(" ")
-    .filter((token) => token.length > 2 && !["the", "and", "with", "from"].includes(token));
-}
-
-function labelSimilarity(left: string | null | undefined, right: string | null | undefined): number | null {
-  if (!left || !right) {
-    return null;
-  }
-
-  const normalizedLeft = normalizeLabelText(left);
-  const normalizedRight = normalizeLabelText(right);
-  if (!normalizedLeft || !normalizedRight) {
-    return null;
-  }
-  if (normalizedLeft === normalizedRight) {
-    return 1;
-  }
-  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
-    return 0.85;
-  }
-
-  const leftTokens = new Set(labelTokens(left));
-  const rightTokens = new Set(labelTokens(right));
-  if (leftTokens.size === 0 || rightTokens.size === 0) {
-    return null;
-  }
-
-  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  if (intersection === 0) {
-    return 0;
-  }
-
-  const union = new Set([...leftTokens, ...rightTokens]).size;
-  const jaccard = intersection / union;
-  const overlap = intersection / Math.max(leftTokens.size, rightTokens.size);
-  return Math.max(jaccard, overlap);
-}
-
-function isLikelyAccuracyMatch(
-  groundTruthLabel: string | null,
-  result: LabelResult | null
-): { isMatch: boolean | null; score: number | null } {
-  if (!groundTruthLabel || !result?.primary_action) {
-    return { isMatch: null, score: null };
-  }
-
-  const score = labelSimilarity(groundTruthLabel, result.primary_action);
-  if (score == null) {
-    return { isMatch: null, score: null };
-  }
-
-  return { isMatch: score >= 0.6, score };
-}
-
 function getGroundTruthEntry(
-  segment: SegmentSummary,
+  segment: ReportSegment,
   groundTruth: GroundTruthEntry[] | null | undefined
 ): GroundTruthEntry | null {
   if (!groundTruth || groundTruth.length === 0) {
@@ -324,13 +375,16 @@ function getGroundTruthEntry(
     groundTruth.find(
       (entry) =>
         entry.segment_id === segment.segment_id ||
-        entry.segment_index === segment.segment_index
+        entry.segment_index === segment.segment_index ||
+        (entry.video_id === segment.video_id &&
+          Math.abs((entry.start_time_s ?? 0) - segment.start_s) < 1 &&
+          Math.abs((entry.end_time_s ?? 0) - segment.end_s) < 1)
     ) ?? null
   );
 }
 
 function getGroundTruthLabel(
-  segment: SegmentSummary,
+  segment: ReportSegment,
   groundTruth: GroundTruthEntry[] | null | undefined
 ): string | null {
   const match = getGroundTruthEntry(segment, groundTruth);
@@ -338,7 +392,7 @@ function getGroundTruthLabel(
 }
 
 function getModelResult(
-  segment: SegmentSummary,
+  segment: ReportSegment,
   modelName: string,
   results: LabelResult[]
 ): LabelResult | null {
@@ -346,22 +400,11 @@ function getModelResult(
     results.find(
       (result) =>
         result.model_name === modelName &&
-        result.segment_id === segment.segment_id
+        (result.segment_id === segment.segment_id ||
+          (result.video_id === segment.video_id &&
+            Math.abs((result.start_time_s ?? 0) - segment.start_s) < 1))
     ) ?? null
   );
-}
-
-function accuracyScoreClass(score: number | null): string {
-  if (score == null) {
-    return "is-none";
-  }
-  if (score >= 0.8) {
-    return "is-high";
-  }
-  if (score >= 0.5) {
-    return "is-mid";
-  }
-  return "is-low";
 }
 
 function HeroSummaryCard({
@@ -409,14 +452,17 @@ export default async function RunReportPage({
   const models = Array.isArray(run.models) ? run.models : [];
   const segments = Array.isArray(run.segments) ? run.segments : [];
   const results = Array.isArray(run.results) ? run.results : [];
+  const featuredVariant = selectFeaturedVariant(sweepData);
+  const displayedResults = filterResultsByVariant(results, featuredVariant);
+  const allSegments =
+    segments.length > 0 ? normalizeReportSegments(segments) : getUniqueSegments(displayedResults);
   const agreement = run.agreement && typeof run.agreement === "object" ? run.agreement : {};
   const groundTruth = Array.isArray(run.ground_truth) ? run.ground_truth : null;
   const rows = buildCoreComparisonRows(run, sweepData);
   const comparisonWinner = bestOverallModel(rows);
   const comparisonBestValue = bestValueModel(rows, segments.length || 1);
   const fastest = fastestModel(rows);
-  const featuredVariant = selectFeaturedVariant(sweepData);
-  const samples = selectSampleSegments(run, featuredVariant, 3);
+  const taxonomyAgreement = summarizeTaxonomyAgreement(run.taxonomy_agreement);
   const runLabel = displayRunName(run.run_id, run.config.created_at);
   const reportName = run.config.display_name?.trim() || runLabel;
   const runType = getRunType(run);
@@ -429,6 +475,13 @@ export default async function RunReportPage({
   const hasGroundTruth = Boolean(groundTruth?.length);
   const hasAccuracyMetrics = accuracyEntries.some((entry) => entry.score != null);
   const isAccuracyReport = runType === "accuracy_test" || hasGroundTruth || hasAccuracyMetrics;
+  const isDenseMode =
+    run.labeling_mode === "dense" ||
+    run.config?.labeling_mode === "dense" ||
+    results.some(
+      (result) =>
+        result.action_label != null || result.labeling_mode?.trim().toLowerCase() === "dense"
+    );
 
   return (
     <main className="analysis-shell report-page">
@@ -446,7 +499,7 @@ export default async function RunReportPage({
         <div className="report-subhead-row">
           <p className="report-subhead">
             {reportName}
-            {featuredVariant ? ` \u00b7 sample segments from ${featuredVariant}` : ""}
+            {featuredVariant ? ` \u00b7 segment view using ${featuredVariant}` : ""}
           </p>
           <RunTypeBadge run={run} />
         </div>
@@ -543,94 +596,103 @@ export default async function RunReportPage({
         )}
       </section>
 
-      {isAccuracyReport ? (
-        <section className="visual-card accuracy-report-section">
-          <div className="section-heading">
-            <p className="section-eyebrow">Accuracy Results</p>
-            <h3>How accurately did each model match the ground truth?</h3>
-            <p className="chart-desc">
-              {hasGroundTruth
-                ? "These scores reflect how closely each model matched your saved labels."
-                : "These scores reflect the run's available ground-truth accuracy metrics."}
-            </p>
-          </div>
+      <section className="visual-card all-segments-section">
+        <div className="section-heading">
+          <p className="section-eyebrow">Segment Breakdown</p>
+          <h2>What each model said, segment by segment</h2>
+          <p className="chart-desc">
+            {featuredVariant
+              ? `Every segment from this benchmark, using ${featuredVariant} so each model appears side by side.`
+              : "Every segment from this benchmark, with each model's label shown side by side."}
+            {hasGroundTruth
+              ? " Your saved label appears on each segment when ground truth is available."
+              : ""}
+          </p>
+        </div>
 
-          {hasAccuracyMetrics ? (
-            <div className="accuracy-model-cards">
-              {accuracyEntries.map((entry) => (
-                <article key={entry.model_name} className="accuracy-model-card">
-                  <span className="model-name">{entry.model_name}</span>
-                  <span className={`accuracy-score ${accuracyScoreClass(entry.score)}`}>
-                    {formatPercent(entry.score)}
-                  </span>
-                  <span className="accuracy-label">{entry.source_label}</span>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="accuracy-pending">
-              <p>
-                Accuracy scoring is still processing or was not available for this run. The
-                agreement views below still show where the models aligned with each other.
-              </p>
-            </div>
-          )}
+        {allSegments.length > 0 ? (
+          <div className="segment-list">
+            {(allSegments || []).map((segment) => {
+              const groundTruthLabel = getGroundTruthLabel(segment, groundTruth);
+              return (
+                <div key={segment.segment_id} className="segment-row">
+                  <div className="segment-header">
+                    <span className="segment-time">
+                      {segment.video_name || segment.video_id} · {formatTime(segment.start_s)} -{" "}
+                      {formatTime(segment.end_s)}
+                    </span>
+                    {groundTruthLabel ? (
+                      <span className="gt-badge">Your label: {groundTruthLabel}</span>
+                    ) : null}
+                  </div>
 
-          {hasGroundTruth ? (
-            <div className="segment-accuracy-table">
-              <h3>Segment-by-segment breakdown</h3>
-              <p className="chart-desc">
-                Your labels are shown next to each model answer. Match marks use lightweight label
-                similarity because per-segment judge verdicts are not included in the exported run
-                payload.
-              </p>
-              <div className="table-scroll">
-                <table className="accuracy-table">
-                  <thead>
-                    <tr>
-                      <th>Segment</th>
-                      <th>Your label</th>
-                      {models.map((modelName) => (
-                        <th key={modelName}>{modelName}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {segments.map((segment) => {
-                      const groundTruthLabel = getGroundTruthLabel(segment, groundTruth);
+                  <div className="model-labels">
+                    {(models || []).map((modelName) => {
+                      const result = getModelResult(segment, modelName, displayedResults);
+                      const parsed = result ? result.parsed_success !== false : true;
+                      const confidenceLabel = formatConfidence(
+                        result?.action_label?.confidence ?? result?.confidence ?? null
+                      );
+
                       return (
-                        <tr key={segment.segment_id}>
-                          <td className="seg-time">
-                            {formatTime(segment.start_time_s)} - {formatTime(segment.end_time_s)}
-                          </td>
-                          <td className="gt-label">{groundTruthLabel ?? "\u2014"}</td>
-                          {models.map((modelName) => {
-                            const result = getModelResult(segment, modelName, results);
-                            const { isMatch } = isLikelyAccuracyMatch(groundTruthLabel, result);
-                            return (
-                              <td
-                                key={`${segment.segment_id}-${modelName}`}
-                                className={`model-answer ${isMatch === true ? "correct" : isMatch === false ? "incorrect" : ""}`}
-                              >
-                                {result?.primary_action || "\u2014"}
-                                {isMatch != null ? (
-                                  <span
-                                    className={`match-indicator ${isMatch ? "match" : "mismatch"}`}
-                                  >
-                                    {isMatch ? "\u2713" : "\u2717"}
-                                  </span>
-                                ) : null}
-                              </td>
-                            );
-                          })}
-                        </tr>
+                        <div
+                          key={`${segment.segment_id}-${modelName}`}
+                          className={`model-label-card ${result && !parsed ? "parse-failed" : ""}`}
+                          style={{ borderLeftColor: modelColor(modelName) }}
+                        >
+                          <span className="model-label-name">{modelName}</span>
+                          {result && !parsed ? (
+                            <span className="model-label-error">Failed to parse</span>
+                          ) : isDenseMode && result?.action_label ? (
+                            <div className="dense-label">
+                              <span className="verb-tag">{result.action_label.verb}</span>
+                              <span className="noun-tag">{result.action_label.noun}</span>
+                            </div>
+                          ) : (
+                            <span className="model-label-text">
+                              {result?.primary_action || "\u2014"}
+                            </span>
+                          )}
+                          {confidenceLabel ? (
+                            <span className="model-label-confidence">{confidenceLabel}</span>
+                          ) : null}
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="empty-state">No segment comparisons are available for this run.</p>
+        )}
+      </section>
+
+      {isDenseMode && taxonomyAgreement ? (
+        <section className="visual-card dense-metrics-section">
+          <div className="section-heading">
+            <p className="section-eyebrow">Taxonomy Agreement</p>
+            <h2>Structured verb+noun matching</h2>
+            <p className="chart-desc">
+              These averages summarize how often the models matched on the verb, noun, and full
+              action taxonomy labels.
+            </p>
+          </div>
+          <div className="dense-metric-cards">
+            <article className="metric-card">
+              <span className="metric-label">Verb agreement</span>
+              <span className="metric-value">{formatPercent(taxonomyAgreement.verb)}</span>
+            </article>
+            <article className="metric-card">
+              <span className="metric-label">Noun agreement</span>
+              <span className="metric-value">{formatPercent(taxonomyAgreement.noun)}</span>
+            </article>
+            <article className="metric-card">
+              <span className="metric-label">Action agreement</span>
+              <span className="metric-value">{formatPercent(taxonomyAgreement.action)}</span>
+            </article>
+          </div>
         </section>
       ) : null}
 
@@ -646,22 +708,6 @@ export default async function RunReportPage({
             : "This is the one visual to carry into a discussion: it shows how tightly the models cluster."
         }
         matrix={agreement}
-      />
-
-      <SegmentComparisonSamplesCard
-        title={isAccuracyReport ? "Model Agreement by Segment" : "Sample Segment Comparisons"}
-        description={
-          isAccuracyReport
-            ? "These samples keep the comparison view visible below the accuracy summary so you can separate correctness from consensus."
-            : featuredVariant
-              ? `Three representative segments from ${featuredVariant}, shown with the model outputs side by side.`
-              : "Three representative segments from this run, shown with the model outputs side by side."
-        }
-        samples={samples}
-        formatSampleTitle={(sample) => displaySegmentName(sample.segment)}
-        formatSampleMeta={(sample) =>
-          sample.variant_label ? sample.variant_label : "Representative comparison"
-        }
       />
 
       <details className="visual-card full-details-card">

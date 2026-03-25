@@ -22,6 +22,8 @@ type JsonRunBundle = {
   accuracy_by_model: Record<string, AccuracyMetric> | null;
   llm_accuracy: Record<string, AccuracyMetric> | null;
   ground_truth: GroundTruthEntry[] | null;
+  config_overrides: Partial<RunPayload["config"]>;
+  taxonomy_agreement: Record<string, unknown> | null;
 };
 const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
 const RUN_METADATA_FILENAME = "run_metadata.json";
@@ -33,6 +35,18 @@ async function exists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = value.filter((entry): entry is string => typeof entry === "string");
+  return entries.length > 0 ? entries : undefined;
 }
 
 function parseCsv(text: string): CsvRecord[] {
@@ -373,6 +387,34 @@ function coerceGroundTruth(raw: unknown): GroundTruthEntry[] | null {
   return entries.length > 0 ? entries : null;
 }
 
+function coerceRunConfig(raw: unknown): Partial<RunPayload["config"]> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  const record = raw as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries({
+      prompt_version: readString(record.prompt_version),
+      segmentation_mode: readString(record.segmentation_mode),
+      display_name:
+        readString(record.display_name) ??
+        readString((record as { name?: unknown }).name),
+      notes: readString(record.notes),
+      labeling_mode: readString(record.labeling_mode),
+      created_at: readString(record.created_at),
+      video_ids: readStringArray(record.video_ids),
+    }).filter(([, value]) => value !== undefined)
+  ) as Partial<RunPayload["config"]>;
+}
+
+function coerceTaxonomyAgreement(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  return raw as Record<string, unknown>;
+}
+
 async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRunBundle | null> {
   const artifactPath = await findRunArtifact(runId, "json", dataDir);
   if (!artifactPath) {
@@ -388,6 +430,8 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
       accuracy_by_model: null,
       llm_accuracy: null,
       ground_truth: null,
+      config_overrides: {},
+      taxonomy_agreement: null,
     };
   }
   if (!raw || typeof raw !== "object") {
@@ -406,6 +450,11 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
     accuracy_by_model: coerceAccuracyMetrics(record.accuracy_by_model),
     llm_accuracy: coerceAccuracyMetrics(record.llm_accuracy),
     ground_truth: coerceGroundTruth(record.ground_truth),
+    config_overrides: {
+      ...coerceRunConfig(record.config),
+      ...(readString(record.display_name) ? { display_name: readString(record.display_name) } : {}),
+    },
+    taxonomy_agreement: coerceTaxonomyAgreement(record.taxonomy_agreement),
   };
 }
 
@@ -427,14 +476,16 @@ async function loadRunResults(
   if (jsonResults && jsonResults.results.length > 0) {
     return jsonResults;
   }
-  return {
-    results: await loadCsvResults(runId, dataDir),
-    summary_overrides: {},
-    agreement: null,
-    accuracy_by_model: null,
-    llm_accuracy: null,
-    ground_truth: null,
-  };
+    return {
+      results: await loadCsvResults(runId, dataDir),
+      summary_overrides: {},
+      agreement: null,
+      accuracy_by_model: null,
+      llm_accuracy: null,
+      ground_truth: null,
+      config_overrides: {},
+      taxonomy_agreement: null,
+    };
 }
 
 async function loadGroundTruth(
@@ -644,11 +695,18 @@ export async function loadArtifactRun(
 
   return {
     ...payload,
+    config: {
+      ...payload.config,
+      ...runData.config_overrides,
+    },
+    labeling_mode:
+      runData.config_overrides.labeling_mode ?? payload.labeling_mode ?? null,
     run_type: runType,
     agreement: runData.agreement ?? payload.agreement,
     accuracy_by_model: runData.accuracy_by_model,
     llm_accuracy: runData.llm_accuracy,
     ground_truth: groundTruth,
+    taxonomy_agreement: runData.taxonomy_agreement,
   };
 }
 

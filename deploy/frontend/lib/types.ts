@@ -26,6 +26,15 @@ export type AccuracyMetric = {
   evaluated_segments?: number | null;
 };
 
+export type ActionLabel = {
+  verb: string;
+  noun: string;
+  verb_class?: number | null;
+  noun_class?: number | null;
+  action: string;
+  confidence?: number | null;
+};
+
 export type GroundTruthEntry = {
   video_id?: string;
   segment_id?: string;
@@ -64,6 +73,8 @@ export type LabelResult = {
   num_frames_used?: number;
   sampling_method_used?: string;
   sweep_id?: string;
+  action_label?: ActionLabel | null;
+  labeling_mode?: string | null;
   timestamp?: string | null;
 };
 
@@ -95,7 +106,9 @@ export type RunPayload = {
     created_at: string;
     display_name?: string | null;
     notes?: string | null;
+    labeling_mode?: string | null;
   };
+  labeling_mode?: string | null;
   models: string[];
   videos: Array<{
     filename?: string;
@@ -119,6 +132,7 @@ export type RunPayload = {
   results: LabelResult[];
   ground_truth?: GroundTruthEntry[] | null;
   sweep?: SweepMetrics;
+  taxonomy_agreement?: Record<string, unknown> | null;
 };
 
 export type FramePreview = {
