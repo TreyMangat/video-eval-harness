@@ -2545,6 +2545,191 @@ textarea:focus {
   margin-bottom: 32px;
 }
 
+.dense-report-header,
+.dense-segments-section,
+.dense-summary-section {
+  margin-bottom: 24px;
+}
+
+.dense-stats {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.dense-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dense-stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-tertiary, var(--muted));
+}
+
+.dense-stat-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary, #f8fafc);
+}
+
+.dense-segment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dense-segment-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: var(--border-radius-lg, 12px);
+  border: 1px solid var(--color-border-tertiary, var(--line));
+  background: var(--color-background-secondary, rgba(15, 23, 42, 0.62));
+}
+
+.dense-segment-time {
+  min-width: 160px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, var(--muted));
+}
+
+.dense-model-labels {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.dense-label-card {
+  min-width: 160px;
+  padding: 8px 12px;
+  border-radius: var(--border-radius-md, 8px);
+  border: 1px solid var(--color-border-tertiary, var(--line));
+  border-left-width: 3px;
+  border-left-style: solid;
+  background: var(--color-background-primary, rgba(8, 12, 22, 0.92));
+}
+
+.dense-label-card.parse-failed {
+  border-color: var(--color-border-danger, rgba(239, 68, 68, 0.45));
+  opacity: 0.6;
+}
+
+.dense-label-model {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary, var(--muted));
+}
+
+.dense-label-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dense-label-conf {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-text-tertiary, var(--muted));
+}
+
+.dense-label-text {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary, #f8fafc);
+}
+
+.dense-label-error {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-danger, #fca5a5);
+}
+
+.match-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.match-badge.full-match {
+  background: rgba(99, 153, 34, 0.12);
+  color: var(--color-text-success, #97c459);
+}
+
+.match-badge.verb-match {
+  background: rgba(127, 119, 221, 0.12);
+  color: #7f77dd;
+}
+
+.match-badge.noun-match {
+  background: rgba(29, 158, 117, 0.12);
+  color: #1d9e75;
+}
+
+.match-badge.no-match {
+  background: rgba(226, 75, 74, 0.08);
+  color: var(--color-text-danger, #fca5a5);
+}
+
+.dense-frequency {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.dense-freq-model {
+  padding: 16px;
+  border-radius: var(--border-radius-lg, 12px);
+  border: 1px solid var(--color-border-tertiary, var(--line));
+  background: var(--color-background-secondary, rgba(15, 23, 42, 0.62));
+}
+
+.dense-freq-model h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dense-freq-row {
+  display: flex;
+  gap: 16px;
+}
+
+.dense-freq-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dense-freq-label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary, var(--muted));
+}
+
 .dense-metric-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -2586,6 +2771,29 @@ textarea:focus {
 @media (max-width: 768px) {
   .model-labels {
     grid-template-columns: 1fr;
+  }
+
+  .dense-segment-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dense-model-labels {
+    width: 100%;
+  }
+
+  .dense-label-card {
+    flex: 1;
+    min-width: unset;
+  }
+
+  .dense-stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .dense-freq-row {
+    flex-direction: column;
   }
 
   .segment-header {

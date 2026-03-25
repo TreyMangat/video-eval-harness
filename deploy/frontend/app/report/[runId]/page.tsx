@@ -432,6 +432,246 @@ function HeroSummaryCard({
   );
 }
 
+function topDenseLabelCounts(
+  results: LabelResult[],
+  field: "verb" | "noun"
+): Array<[string, number]> {
+  const counts = new Map<string, number>();
+
+  for (const result of results) {
+    const value = result.action_label?.[field]?.trim();
+    if (!value) {
+      continue;
+    }
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5);
+}
+
+function DenseReport({
+  run,
+  reportName,
+  results,
+  segments,
+}: {
+  run: RunPayload;
+  reportName: string;
+  results: LabelResult[];
+  segments: ReportSegment[];
+}) {
+  const denseSegments = segments.length > 0 ? segments : getUniqueSegments(results);
+  const models = [...new Set((results || []).map((result) => result.model_name).filter(Boolean))];
+
+  return (
+    <>
+      <section className="visual-card dense-report-header">
+        <div className="section-heading">
+          <p className="section-eyebrow">Dense Labeling Report</p>
+          <h1>{reportName}</h1>
+          <p className="chart-desc">
+            {models.length} models labeled {denseSegments.length} segments at 3-second granularity
+            using structured verb+noun vocabulary.
+          </p>
+        </div>
+
+        <div className="report-subhead-row">
+          <p className="report-subhead">{displayRunName(run.run_id, run.config.created_at)}</p>
+          <RunTypeBadge run={run} />
+        </div>
+
+        <div className="dense-stats">
+          <div className="dense-stat">
+            <span className="dense-stat-label">Segments</span>
+            <span className="dense-stat-value">{denseSegments.length}</span>
+          </div>
+          <div className="dense-stat">
+            <span className="dense-stat-label">Models</span>
+            <span className="dense-stat-value">{models.join(", ") || "\u2014"}</span>
+          </div>
+          <div className="dense-stat">
+            <span className="dense-stat-label">Parse success</span>
+            <span className="dense-stat-value">
+              {models.length > 0
+                ? models.map((modelName) => {
+                    const modelResults = results.filter(
+                      (result) => result.model_name === modelName
+                    );
+                    const parsedCount = modelResults.filter(
+                      (result) =>
+                        result.parsed_success !== false &&
+                        (result.action_label != null || Boolean(result.primary_action))
+                    ).length;
+                    const rate =
+                      modelResults.length > 0
+                        ? Math.round((parsedCount / modelResults.length) * 100)
+                        : null;
+                    return `${modelName}: ${rate == null ? "\u2014" : `${rate}%`}`;
+                  }).join(" \u00b7 ")
+                : "\u2014"}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className="visual-card dense-segments-section">
+        <div className="section-heading">
+          <p className="section-eyebrow">Segment Labels</p>
+          <h2>What each model identified</h2>
+          <p className="chart-desc">
+            Each row shows a 3-second segment with each model&apos;s verb+noun label.
+          </p>
+        </div>
+
+        {denseSegments.length > 0 ? (
+          <div className="dense-segment-list">
+            {(denseSegments || []).map((segment) => {
+              const firstResult =
+                models.length === 2 ? getModelResult(segment, models[0], results) : null;
+              const secondResult =
+                models.length === 2 ? getModelResult(segment, models[1], results) : null;
+              const firstActionLabel = firstResult?.action_label;
+              const secondActionLabel = secondResult?.action_label;
+              const verbMatch =
+                firstActionLabel?.verb && secondActionLabel?.verb
+                  ? firstActionLabel.verb === secondActionLabel.verb
+                  : false;
+              const nounMatch =
+                firstActionLabel?.noun && secondActionLabel?.noun
+                  ? firstActionLabel.noun === secondActionLabel.noun
+                  : false;
+              const matchBadge =
+                firstActionLabel && secondActionLabel ? (
+                  verbMatch && nounMatch ? (
+                    <span className="match-badge full-match">Both agree</span>
+                  ) : verbMatch ? (
+                    <span className="match-badge verb-match">Same verb</span>
+                  ) : nounMatch ? (
+                    <span className="match-badge noun-match">Same noun</span>
+                  ) : (
+                    <span className="match-badge no-match">Different</span>
+                  )
+                ) : null;
+
+              return (
+                <div
+                  key={segment.segment_id || `${segment.video_id}-${segment.start_s}`}
+                  className="dense-segment-row"
+                >
+                  <div className="dense-segment-time">
+                    {segment.video_name || displayVideoName(segment.video_id)} \u00b7{" "}
+                    {formatTime(segment.start_s)} - {formatTime(segment.end_s)}
+                  </div>
+
+                  <div className="dense-model-labels">
+                    {(models || []).map((modelName) => {
+                      const result = getModelResult(segment, modelName, results);
+                      const actionLabel = result?.action_label;
+                      const parsed =
+                        result?.parsed_success !== false &&
+                        (actionLabel != null || Boolean(result?.primary_action));
+                      const confidenceLabel = formatConfidence(
+                        actionLabel?.confidence ?? result?.confidence ?? null
+                      );
+
+                      return (
+                        <div
+                          key={`${segment.segment_id}-${modelName}`}
+                          className={`dense-label-card ${result && !parsed ? "parse-failed" : ""}`}
+                          style={{ borderLeftColor: modelColor(modelName) }}
+                        >
+                          <span className="dense-label-model">{modelName}</span>
+                          {!result ? (
+                            <span className="dense-label-text">\u2014</span>
+                          ) : actionLabel ? (
+                            <div className="dense-label-tags">
+                              <span className="verb-tag">{actionLabel.verb}</span>
+                              <span className="noun-tag">{actionLabel.noun}</span>
+                              {confidenceLabel ? (
+                                <span className="dense-label-conf">{confidenceLabel}</span>
+                              ) : null}
+                            </div>
+                          ) : parsed ? (
+                            <>
+                              <span className="dense-label-text">
+                                {result.primary_action || "\u2014"}
+                              </span>
+                              {confidenceLabel ? (
+                                <span className="dense-label-conf">{confidenceLabel}</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="dense-label-error">Failed to parse</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {matchBadge}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="empty-state">No dense segment labels are available for this run.</p>
+        )}
+      </section>
+
+      <section className="visual-card dense-summary-section">
+        <div className="section-heading">
+          <p className="section-eyebrow">Label Summary</p>
+          <h2>Most common actions detected</h2>
+        </div>
+
+        <div className="dense-frequency">
+          {(models || []).map((modelName) => {
+            const modelResults = results.filter(
+              (result) => result.model_name === modelName && result.action_label != null
+            );
+            const topVerbs = topDenseLabelCounts(modelResults, "verb");
+            const topNouns = topDenseLabelCounts(modelResults, "noun");
+
+            return (
+              <article key={modelName} className="dense-freq-model">
+                <h4>{modelName}</h4>
+                <div className="dense-freq-row">
+                  <div className="dense-freq-col">
+                    <span className="dense-freq-label">Top verbs</span>
+                    {topVerbs.length > 0 ? (
+                      topVerbs.map(([verb, count]) => (
+                        <span key={verb} className="verb-tag">
+                          {verb} ({count})
+                        </span>
+                      ))
+                    ) : (
+                      <p className="empty-state">No structured verb labels yet.</p>
+                    )}
+                  </div>
+                  <div className="dense-freq-col">
+                    <span className="dense-freq-label">Top nouns</span>
+                    {topNouns.length > 0 ? (
+                      topNouns.map(([noun, count]) => (
+                        <span key={noun} className="noun-tag">
+                          {noun} ({count})
+                        </span>
+                      ))
+                    ) : (
+                      <p className="empty-state">No structured noun labels yet.</p>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </>
+  );
+}
+
 export default async function RunReportPage({
   params,
   searchParams,
@@ -489,6 +729,15 @@ export default async function RunReportPage({
         <TopNav active="runs" />
       </div>
 
+      {isDenseMode ? (
+        <DenseReport
+          run={run}
+          reportName={reportName}
+          results={displayedResults}
+          segments={allSegments}
+        />
+      ) : (
+        <>
       <section className="visual-card report-verdict-card">
         <p className="section-eyebrow">Printable Summary</p>
         <h1 className="report-verdict">
@@ -749,6 +998,8 @@ export default async function RunReportPage({
           />
         ) : null}
       </details>
+        </>
+      )}
     </main>
   );
 }

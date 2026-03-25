@@ -219,6 +219,46 @@ export function UploadZone() {
     setSelectedModels((current) => current.slice(0, maxModels));
   }, [maxModels]);
 
+  function applyHealthPayload(healthPayload: HealthPayload): void {
+    setHealth(healthPayload);
+    setSelectedModels((current) => {
+      const preserved = current
+        .filter((modelName) => healthPayload.limits.allowed_models.includes(modelName))
+        .slice(0, healthPayload.limits.max_models);
+      return preserved.length > 0
+        ? preserved
+        : healthPayload.limits.allowed_models.slice(0, healthPayload.limits.max_models);
+    });
+  }
+
+  async function ensureServerReadyForSubmission(): Promise<HealthPayload | null> {
+    setServerState("checking");
+    setWarmupStartTime(Date.now());
+    setWarmupElapsed(0);
+    setStatusMessage("Preparing server...");
+
+    for (let attempt = 0; attempt < API_WARMUP_ATTEMPTS; attempt += 1) {
+      try {
+        const healthPayload = await checkServerHealth(apiUrl);
+        applyHealthPayload(healthPayload);
+        setServerState("ready");
+        return healthPayload;
+      } catch {
+        setServerState("warming");
+        setStatusMessage("Waking up server...");
+      }
+
+      if (attempt < API_WARMUP_ATTEMPTS - 1) {
+        await wait(API_WARMUP_INTERVAL_MS);
+      }
+    }
+
+    setServerState("unavailable");
+    setStatusMessage(null);
+    setErrorMessage("Could not reach the benchmark server. Please try again in 30 seconds.");
+    return null;
+  }
+
   useEffect(() => {
     if (!selectedFile) {
       setVideoDuration(null);
@@ -512,13 +552,19 @@ export function UploadZone() {
   }
 
   async function startBenchmark(): Promise<void> {
-    if (serverState !== "ready" || !selectedFile || selectedModels.length === 0 || isSubmitting) {
+    if (!selectedFile || selectedModels.length === 0 || isSubmitting) {
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setStatusMessage("Uploading video...");
+    const serverReady = await ensureServerReadyForSubmission();
+    if (!serverReady) {
+      setIsSubmitting(false);
+      return;
+    }
+
+    setStatusMessage("Uploading and starting benchmark...");
     setCompletedBenchmark(null);
 
     try {
@@ -847,18 +893,13 @@ export function UploadZone() {
               className="primary-btn upload-inline-button"
               onClick={() => void startBenchmark()}
               disabled={
-                serverState !== "ready" ||
                 isSubmitting ||
                 isJobActive(job) ||
                 !selectedFile ||
                 selectedModels.length === 0
               }
             >
-              {serverState === "unavailable"
-                ? "Server unavailable"
-                : serverState !== "ready"
-                  ? "Waiting for server..."
-                  : "Start Benchmark"}
+              {isSubmitting ? "Starting benchmark..." : "Start Benchmark"}
             </button>
 
             {isJobActive(job) ? (
