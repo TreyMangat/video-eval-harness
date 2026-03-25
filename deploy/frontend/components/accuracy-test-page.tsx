@@ -15,6 +15,7 @@ import {
   type SegmentPreviewResponse,
 } from "../lib/api-client";
 import { DEFAULT_MODEL_CATALOG } from "../lib/model-catalog";
+import { BatchAccuracyTestPage } from "./batch-accuracy-test-page";
 import { TopNav } from "./navigation";
 
 const ACCEPTED_TYPES = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
@@ -27,6 +28,7 @@ const API_WARMUP_INTERVAL_MS = 5_000;
 const ACCURACY_SUBMIT_WARMUP_ATTEMPTS = 6;
 
 type Phase = "upload" | "label" | "running" | "complete";
+type TestMode = "single" | "batch";
 type ServerState = "checking" | "warming" | "ready" | "unavailable";
 type JobState = {
   jobId: string;
@@ -42,6 +44,10 @@ const DEFAULT_LIMITS: HealthPayload["limits"] = {
   max_file_size_mb: 100,
   max_models: DEFAULT_MODEL_CATALOG.length,
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
+};
+
+type AccuracyTestPageProps = {
+  initialTestMode?: TestMode;
 };
 
 function isAcceptedFile(file: File): boolean {
@@ -174,9 +180,12 @@ function ServerStatusBanner({
   );
 }
 
-export function AccuracyTestPage() {
+export function AccuracyTestPage({
+  initialTestMode = "single",
+}: AccuracyTestPageProps = {}) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const interactiveMode = (process.env.NEXT_PUBLIC_API_URL?.trim() ?? "").length > 0;
+  const [testMode, setTestMode] = useState<TestMode>(initialTestMode);
   const [phase, setPhase] = useState<Phase>("upload");
   const [serverState, setServerState] = useState<ServerState>("checking");
   const [warmupStartTime, setWarmupStartTime] = useState<number | null>(null);
@@ -236,6 +245,10 @@ export function AccuracyTestPage() {
     () => labels.filter((label) => label.trim().length > 0).length,
     [labels]
   );
+
+  useEffect(() => {
+    setTestMode(initialTestMode);
+  }, [initialTestMode]);
 
   function applyHealthPayload(healthPayload: HealthPayload): void {
     setHealth(healthPayload);
@@ -610,34 +623,49 @@ export function AccuracyTestPage() {
     }
   }
 
-  if (!interactiveMode) {
-    return (
-      <main className="analysis-shell">
-        <TopNav active="accuracy" />
-        <section className="visual-card upload-inline-card dashboard-section-card is-disabled">
-          <div className="accuracy-header">
-            <h1>Accuracy Test</h1>
-            <p>Set `NEXT_PUBLIC_API_URL` to enable interactive uploads and preview-based labeling.</p>
-          </div>
-        </section>
-      </main>
-    );
-  }
+  const headerCard = (
+    <section className="visual-card dashboard-section-card">
+      <div className="accuracy-header">
+        <span className="section-label">ACCURACY TEST</span>
+        <h1>Test model accuracy against your labels</h1>
+        <p>
+          Upload a video and label what you see, or upload a CSV of pre-labeled videos. We&apos;ll
+          run your chosen models and score how accurately they match your descriptions.
+        </p>
+      </div>
+      <div className="test-mode-tabs" role="tablist" aria-label="Accuracy test mode">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={testMode === "single"}
+          className={`mode-tab ${testMode === "single" ? "active" : ""}`}
+          onClick={() => setTestMode("single")}
+        >
+          Single video
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={testMode === "batch"}
+          className={`mode-tab ${testMode === "batch" ? "active" : ""}`}
+          onClick={() => setTestMode("batch")}
+        >
+          Batch (CSV + videos)
+        </button>
+      </div>
+    </section>
+  );
 
-  return (
-    <main className="analysis-shell">
-      <TopNav active="accuracy" />
-
-      <section className="visual-card dashboard-section-card">
-        <div className="accuracy-header">
-          <h1>Accuracy Test</h1>
-          <p>
-            Upload a video, label what you see, then test how accurately AI models identify the
-            actions in each segment.
-          </p>
-        </div>
-
-        <ServerStatusBanner serverState={serverState} warmupElapsed={warmupElapsed} />
+  const singleContent = !interactiveMode ? (
+    <section className="visual-card upload-inline-card dashboard-section-card is-disabled">
+      <div className="accuracy-header">
+        <h1>Single-video accuracy testing is unavailable</h1>
+        <p>Set `NEXT_PUBLIC_API_URL` to enable interactive uploads and preview-based labeling.</p>
+      </div>
+    </section>
+  ) : (
+    <section className="visual-card dashboard-section-card">
+      <ServerStatusBanner serverState={serverState} warmupElapsed={warmupElapsed} />
 
         {phase === "upload" ? (
           <div className="upload-inline-grid">
@@ -926,6 +954,13 @@ export function AccuracyTestPage() {
           </div>
         ) : null}
       </section>
+  );
+
+  return (
+    <main className="analysis-shell">
+      <TopNav active="accuracy" />
+      {headerCard}
+      {testMode === "single" ? singleContent : <BatchAccuracyTestPage embedded />}
     </main>
   );
 }

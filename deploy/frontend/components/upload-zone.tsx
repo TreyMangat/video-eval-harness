@@ -142,6 +142,7 @@ export function UploadZone() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim() ?? "";
   const interactiveMode = apiUrl.length > 0;
+  const [segMode, setSegMode] = useState<"coarse" | "dense">("coarse");
   const [serverState, setServerState] = useState<ServerState>("checking");
   const [warmupStartTime, setWarmupStartTime] = useState<number | null>(null);
   const [warmupElapsed, setWarmupElapsed] = useState(0);
@@ -149,6 +150,7 @@ export function UploadZone() {
   const [modelOptions, setModelOptions] = useState<ApiModel[]>(fallbackModelOptions);
   const [selectedModels, setSelectedModels] = useState<string[]>(DEFAULT_ALLOWED_MODELS);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [benchmarkName, setBenchmarkName] = useState("");
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -158,6 +160,7 @@ export function UploadZone() {
   const [completedBenchmark, setCompletedBenchmark] = useState<CompletedBenchmark | null>(null);
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
+  const maxModels = segMode === "dense" ? Math.min(2, limits.max_models) : limits.max_models;
   const modelOptionsByName = useMemo(
     () => new Map(modelOptions.map((model) => [model.name, model])),
     [modelOptions]
@@ -176,16 +179,22 @@ export function UploadZone() {
     }
     return `${selectedFile.name} (${formatFileSize(selectedFile)})`;
   }, [selectedFile]);
+  const estimatedSegmentCount = useMemo(() => {
+    if (videoDuration && videoDuration > 0) {
+      return Math.max(1, Math.ceil(videoDuration / (segMode === "dense" ? 3 : 10)));
+    }
+    return segMode === "dense" ? DEFAULT_SEGMENT_ESTIMATE * 3 : DEFAULT_SEGMENT_ESTIMATE;
+  }, [segMode, videoDuration]);
   const estimatedCost = useMemo(
     () =>
       selectedModels.reduce((sum, modelName) => {
         return (
           sum +
-          DEFAULT_SEGMENT_ESTIMATE *
+          estimatedSegmentCount *
             modelCostPerSegment(modelOptionsByName.get(modelName), modelName)
         );
       }, 0),
-    [modelOptionsByName, selectedModels]
+    [estimatedSegmentCount, modelOptionsByName, selectedModels]
   );
   const hasFrontierSelected = useMemo(
     () =>
@@ -194,6 +203,47 @@ export function UploadZone() {
       ),
     [modelOptionsByName, selectedModels]
   );
+
+  useEffect(() => {
+    setSelectedModels((current) => current.slice(0, maxModels));
+  }, [maxModels]);
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setVideoDuration(null);
+      return;
+    }
+
+    let cancelled = false;
+    const objectUrl = URL.createObjectURL(selectedFile);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+
+    const finalize = () => {
+      URL.revokeObjectURL(objectUrl);
+      probe.removeAttribute("src");
+      probe.load();
+    };
+
+    probe.onloadedmetadata = () => {
+      if (!cancelled) {
+        setVideoDuration(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : null);
+      }
+      finalize();
+    };
+    probe.onerror = () => {
+      if (!cancelled) {
+        setVideoDuration(null);
+      }
+      finalize();
+    };
+    probe.src = objectUrl;
+
+    return () => {
+      cancelled = true;
+      finalize();
+    };
+  }, [selectedFile]);
 
   useEffect(() => {
     if (!interactiveMode) {
@@ -422,8 +472,8 @@ export function UploadZone() {
       if (current.includes(modelName)) {
         return current.filter((value) => value !== modelName);
       }
-      if (current.length >= limits.max_models) {
-        setErrorMessage(`Select up to ${limits.max_models} models per run.`);
+      if (current.length >= maxModels) {
+        setErrorMessage(`Select up to ${maxModels} models per run.`);
         return current;
       }
       return [...current, modelName];
@@ -443,7 +493,7 @@ export function UploadZone() {
           checked={checked}
           onChange={() => toggleModel(model.name)}
           disabled={
-            isSubmitting || isJobActive(job) || (!checked && selectedModels.length >= limits.max_models)
+            isSubmitting || isJobActive(job) || (!checked && selectedModels.length >= maxModels)
           }
         />
       </label>
@@ -467,6 +517,7 @@ export function UploadZone() {
         benchmarkName.trim() || undefined,
         {
           runType: "comparison",
+          mode: segMode,
           onStatus: (message) => {
             setStatusMessage(message);
           },
@@ -507,6 +558,18 @@ export function UploadZone() {
               </div>
             </div>
             <div className="upload-inline-controls">
+              <div className="segmentation-mode">
+                <h4>Segmentation mode</h4>
+                <div className="mode-options">
+                  <label className="mode-option selected">
+                    <input type="radio" checked readOnly />
+                    <div className="mode-option-content">
+                      <strong>Standard</strong>
+                      <p>Interactive uploads are disabled in viewer-only deployments.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
               <p className="upload-inline-status">
                 Interactive uploads are disabled for this deployment.
               </p>
@@ -638,7 +701,7 @@ export function UploadZone() {
               <p className="upload-inline-copy">or click to browse</p>
               <p className="upload-inline-note">
                 Max {limits.max_clip_s} seconds | Max {limits.max_file_size_mb}MB | up to{" "}
-                {limits.max_models} models
+                {maxModels} models
               </p>
               <div className="upload-inline-type-list" aria-label="Supported file types">
                 {ACCEPTED_TYPES.map((type) => (
@@ -713,8 +776,52 @@ export function UploadZone() {
               </section>
             </div>
 
+            <div className="segmentation-mode">
+              <h4>Segmentation mode</h4>
+              <div className="mode-options">
+                <label className={`mode-option ${segMode === "coarse" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="segMode"
+                    value="coarse"
+                    checked={segMode === "coarse"}
+                    onChange={() => setSegMode("coarse")}
+                    disabled={isSubmitting || isJobActive(job)}
+                  />
+                  <div className="mode-option-content">
+                    <strong>Standard</strong>
+                    <p>10-second segments, free-text labels. Best for general video comparison.</p>
+                  </div>
+                </label>
+                <label className={`mode-option ${segMode === "dense" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="segMode"
+                    value="dense"
+                    checked={segMode === "dense"}
+                    onChange={() => setSegMode("dense")}
+                    disabled={isSubmitting || isJobActive(job)}
+                  />
+                  <div className="mode-option-content">
+                    <strong>Dense</strong>
+                    <p>
+                      3-second segments, structured verb+noun labels from a controlled vocabulary.
+                      More granular but limited to 2 models.
+                    </p>
+                  </div>
+                </label>
+              </div>
+              {segMode === "dense" ? (
+                <p className="dense-model-note">
+                  Dense mode is limited to 2 models to control costs (3x more segments than
+                  standard).
+                </p>
+              ) : null}
+            </div>
+
             <div className="cost-estimate">
               Estimated cost: ~${estimatedCost.toFixed(2)} for {selectedModels.length} models
+              across ~{estimatedSegmentCount} segments
             </div>
 
             {hasFrontierSelected ? (

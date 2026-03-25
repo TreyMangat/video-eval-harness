@@ -49,6 +49,10 @@ const DEFAULT_LIMITS: HealthPayload["limits"] = {
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
 };
 
+type BatchAccuracyTestPageProps = {
+  embedded?: boolean;
+};
+
 function normalizeFilename(value: string): string {
   return value.split(/[\\/]/).pop()?.trim().toLowerCase() ?? "";
 }
@@ -251,7 +255,9 @@ function ServerStatusBanner({
   );
 }
 
-export function BatchAccuracyTestPage() {
+export function BatchAccuracyTestPage({
+  embedded = false,
+}: BatchAccuracyTestPageProps = {}) {
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const interactiveMode = (process.env.NEXT_PUBLIC_API_URL?.trim() ?? "").length > 0;
   const [phase, setPhase] = useState<Phase>("upload");
@@ -722,24 +728,29 @@ export function BatchAccuracyTestPage() {
   }
 
   if (!interactiveMode) {
+    const disabledCard = (
+      <section className="visual-card upload-inline-card dashboard-section-card is-disabled">
+        <div className="accuracy-header">
+          <h1>Batch Accuracy Test</h1>
+          <p>Set `NEXT_PUBLIC_API_URL` to enable interactive CSV and multi-video uploads.</p>
+        </div>
+      </section>
+    );
+
+    if (embedded) {
+      return disabledCard;
+    }
+
     return (
       <main className="analysis-shell">
-        <TopNav active="batch" />
-        <section className="visual-card upload-inline-card dashboard-section-card is-disabled">
-          <div className="accuracy-header">
-            <h1>Batch Accuracy Test</h1>
-            <p>Set `NEXT_PUBLIC_API_URL` to enable interactive CSV and multi-video uploads.</p>
-          </div>
-        </section>
+        <TopNav active="accuracy" />
+        {disabledCard}
       </main>
     );
   }
 
-  return (
-    <main className="analysis-shell">
-      <TopNav active="batch" />
-
-      <section className="visual-card upload-inline-card dashboard-section-card">
+  const pageContent = (
+    <section className="visual-card upload-inline-card dashboard-section-card">
         <div className="batch-upload-section">
           <div className="section-heading">
             <p className="section-eyebrow">Batch Accuracy Test</p>
@@ -977,6 +988,16 @@ assembly_line.mp4,operating press`}</pre>
           {errorMessage ? <p className="upload-inline-error">{errorMessage}</p> : null}
         </div>
       </section>
+  );
+
+  if (embedded) {
+    return pageContent;
+  }
+
+  return (
+    <main className="analysis-shell">
+      <TopNav active="accuracy" />
+      {pageContent}
     </main>
   );
 }

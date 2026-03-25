@@ -37,6 +37,7 @@ RUN_METADATA_FILENAME = "run_metadata.json"
 PUBLIC_BENCHMARK_CONFIG = ROOT / "configs" / "benchmark_all_models_optimized.yaml"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ALLOWED_RUN_TYPES = {"comparison", "accuracy_test"}
+ALLOWED_BENCHMARK_MODES = {"coarse", "dense"}
 ESTIMATED_TIME_S = 90
 
 try:
@@ -74,13 +75,14 @@ JobRunner = Callable[
         set[str],
         str,
         Optional[Path],
+        str,
         Optional[ArtifactSync],
         Optional[JobStateSaver],
     ],
     None,
 ]
 JobSubmitter = Callable[
-    [Path, str, Path, list[str], Optional[str], set[str], str, Optional[Path]],
+    [Path, str, Path, list[str], Optional[str], set[str], str, Optional[Path], str],
     None,
 ]
 
@@ -389,12 +391,16 @@ def create_app(
         ground_truth: Optional[str] = Form(None),
         preview_id: Optional[str] = Form(None),
         run_type: str = Form("comparison"),
+        mode: str = Form("coarse"),
     ) -> dict[str, Any]:
         upload = video or uploaded_file
         requested_models = _parse_requested_models(models)
         if not requested_models:
             requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
         normalized_run_type = _normalize_run_type(run_type)
+        normalized_mode = _normalize_benchmark_mode(mode)
+        if normalized_mode == "dense" and len(requested_models) > 2:
+            requested_models = requested_models[:2]
 
         artifacts_path = Path(app.state.artifacts_dir)
         if preview_id is not None and preview_id.strip() and upload is None:
@@ -505,6 +511,7 @@ def create_app(
                     _existing_run_ids(_runs_dir(artifacts_path)),
                     normalized_run_type,
                     ground_truth_path,
+                    normalized_mode,
                 )
             else:
                 background_tasks.add_task(
@@ -517,6 +524,7 @@ def create_app(
                     _existing_run_ids(_runs_dir(artifacts_path)),
                     normalized_run_type,
                     ground_truth_path,
+                    normalized_mode,
                     app.state.sync_artifacts,
                     app.state.job_state_saver,
                 )
@@ -748,6 +756,7 @@ def create_app(
                     _existing_run_ids(_runs_dir(artifacts_path)),
                     normalized_run_type,
                     ground_truth_path,
+                    "coarse",
                 )
             else:
                 background_tasks.add_task(
@@ -760,6 +769,7 @@ def create_app(
                     _existing_run_ids(_runs_dir(artifacts_path)),
                     normalized_run_type,
                     ground_truth_path,
+                    "coarse",
                     app.state.sync_artifacts,
                     app.state.job_state_saver,
                 )
@@ -972,6 +982,16 @@ def _normalize_run_type(value: Optional[str]) -> str:
     raise HTTPException(
         status_code=422,
         detail="run_type must be either 'comparison' or 'accuracy_test'.",
+    )
+
+
+def _normalize_benchmark_mode(value: Optional[str]) -> str:
+    normalized = (value or "coarse").strip().lower()
+    if normalized in ALLOWED_BENCHMARK_MODES:
+        return normalized
+    raise HTTPException(
+        status_code=422,
+        detail="mode must be either 'coarse' or 'dense'.",
     )
 
 
@@ -1456,6 +1476,7 @@ def _run_benchmark_job(
     before_runs: set[str],
     run_type: str = "comparison",
     ground_truth_path: Optional[Path] = None,
+    mode: str = "coarse",
     sync_artifacts: Optional[ArtifactSync] = None,
     persist_job_state: Optional[JobStateSaver] = None,
 ) -> None:
@@ -1505,6 +1526,8 @@ def _run_benchmark_job(
             command.extend(["--name", name])
         if ground_truth_path is not None:
             command.extend(["--ground-truth", str(ground_truth_path)])
+        if mode == "dense":
+            command.extend(["--mode", "dense"])
 
         env = os.environ.copy()
         env["PYTHONPATH"] = _augment_pythonpath(ROOT / "src", env.get("PYTHONPATH"))

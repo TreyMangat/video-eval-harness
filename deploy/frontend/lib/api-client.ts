@@ -62,6 +62,7 @@ export type UploadAndBenchmarkOptions = {
   onStatus?: (message: string) => void;
   previewId?: string;
   runType?: "comparison" | "accuracy_test";
+  mode?: "coarse" | "dense";
   groundTruth?: Array<{
     segment_index: number;
     label: string;
@@ -225,6 +226,9 @@ export async function uploadAndBenchmark(
     }
     if (options?.runType) {
       form.append("run_type", options.runType);
+    }
+    if (options?.mode) {
+      form.append("mode", options.mode);
     }
     if (models && models.length > 0) {
       form.append("models", JSON.stringify(models));
