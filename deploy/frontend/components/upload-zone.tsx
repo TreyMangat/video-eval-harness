@@ -170,6 +170,8 @@ export function UploadZone() {
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
   const maxModels = segMode === "dense" ? Math.min(2, limits.max_models) : limits.max_models;
+  const modelLimitHint =
+    segMode === "dense" ? Math.min(2, limits.max_models) : limits.max_models;
   const modelOptionsByName = useMemo(
     () => new Map(modelOptions.map((model) => [model.name, model])),
     [modelOptions]
@@ -710,7 +712,7 @@ export function UploadZone() {
               <p className="upload-inline-copy">or click to browse</p>
               <p className="upload-inline-note">
                 Max {formatClipLimit(limits.max_clip_s)} | Max {limits.max_file_size_mb}MB | up
-                to {maxModels} models
+                to {modelLimitHint} models
               </p>
               <div className="upload-inline-type-list" aria-label="Supported file types">
                 {ACCEPTED_TYPES.map((type) => (

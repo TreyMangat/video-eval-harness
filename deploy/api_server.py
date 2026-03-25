@@ -374,14 +374,17 @@ def create_app(
             raise
         except subprocess.CalledProcessError as exc:
             shutil.rmtree(preview_dir, ignore_errors=True)
-            stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
+            stderr = _clean_error_text(exc.stderr if isinstance(exc.stderr, str) else "")
             raise HTTPException(
                 status_code=500,
                 detail=stderr or "Unable to extract preview keyframes.",
             ) from exc
         except Exception as exc:
             shutil.rmtree(preview_dir, ignore_errors=True)
-            raise HTTPException(status_code=500, detail=f"Segmentation failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500,
+                detail=f"Segmentation failed: {_clean_error_text(str(exc))}",
+            ) from exc
 
     @app.post("/api/benchmark")
     async def start_benchmark(
@@ -1469,6 +1472,27 @@ def _augment_pythonpath(extra_path: Path, current: Optional[str]) -> str:
     return os.pathsep.join(components)
 
 
+def strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _clean_error_text(text: str) -> str:
+    return strip_ansi(text).replace("\r", "").strip()
+
+
+def _write_request_benchmark_config(destination: Path, requested_models: list[str]) -> Path:
+    payload = yaml.safe_load(PUBLIC_BENCHMARK_CONFIG.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Public benchmark config is invalid.")
+
+    payload["models"] = list(requested_models)
+    destination.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    return destination
+
+
 def _run_benchmark_job(
     artifacts_dir: Path,
     job_id: str,
@@ -1495,6 +1519,10 @@ def _run_benchmark_job(
     run_id: Optional[str] = None
 
     try:
+        benchmark_config_path = _write_request_benchmark_config(
+            work_dir / "benchmark.request.yaml",
+            requested_models,
+        )
         _update_job_stage(
             artifacts_dir,
             job_id,
@@ -1512,7 +1540,7 @@ def _run_benchmark_job(
             "run-benchmark",
             str(upload_path),
             "--config",
-            str(PUBLIC_BENCHMARK_CONFIG),
+            str(benchmark_config_path),
             "--models",
             str(ROOT / "configs" / "models.yaml"),
             "--model-filter",
@@ -1640,7 +1668,7 @@ def _run_benchmark_job(
             job_id,
             "failed",
             run_id=run_id,
-            error=str(exc),
+            error=_clean_error_text(str(exc)),
             stage="failed",
             progress="Benchmark failed unexpectedly.",
             run_type=run_type,
@@ -1653,7 +1681,7 @@ def _run_benchmark_job(
 
 def _command_error(stdout: str, stderr: str) -> str:
     for content in (stderr, stdout):
-        stripped = content.strip()
+        stripped = _clean_error_text(content)
         if stripped:
             return stripped.splitlines()[-1]
     return "Benchmark process failed."
