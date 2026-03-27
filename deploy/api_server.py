@@ -39,15 +39,17 @@ ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ALLOWED_RUN_TYPES = {"comparison", "accuracy_test"}
 ALLOWED_BENCHMARK_MODES = {"coarse", "dense"}
 ESTIMATED_TIME_S = 90
-MAX_CLIP_DURATION_S = 600
+MAX_CLIP_DURATION_S = 3600
+MAX_FILE_SIZE_MB = 500
+MAX_SEGMENTS = 500
 
 try:
     from video_eval_harness.limits import PUBLIC_LIMITS
 except Exception:  # pragma: no cover - fallback only used if limits.py is unavailable
     PUBLIC_LIMITS = {
         "max_clip_duration_s": MAX_CLIP_DURATION_S,
-        "max_file_size_mb": 100,
-        "max_segments": 6,
+        "max_file_size_mb": MAX_FILE_SIZE_MB,
+        "max_segments": MAX_SEGMENTS,
         "max_models": 3,
         "allowed_models": ["gemini-3-flash", "gpt-5.4-mini", "qwen3.5-27b"],
     }
@@ -163,6 +165,8 @@ PUBLIC_MODEL_CATALOG: list[dict[str, Any]] = [
 API_PUBLIC_LIMITS = {
     **PUBLIC_LIMITS,
     "max_clip_duration_s": MAX_CLIP_DURATION_S,
+    "max_file_size_mb": MAX_FILE_SIZE_MB,
+    "max_segments": MAX_SEGMENTS,
     "max_models": len(PUBLIC_MODEL_CATALOG),
     "allowed_models": [str(model["name"]) for model in PUBLIC_MODEL_CATALOG],
 }
@@ -267,13 +271,16 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     async def get_run(run_id: str) -> dict[str, Any]:
         app.state.refresh_artifacts()
+        # Prefer the exported JSON — it preserves dense-mode fields
+        # (action_label, labeling_mode, taxonomy_agreement) that the
+        # SQLite schema does not store.
+        exported_payload = _load_exported_run_payload(Path(app.state.artifacts_dir), run_id)
+        if exported_payload is not None:
+            return exported_payload
         storage = Storage(app.state.artifacts_dir)
         try:
             return _build_run_payload(storage, run_id)
         except Exception as exc:
-            exported_payload = _load_exported_run_payload(Path(app.state.artifacts_dir), run_id)
-            if exported_payload is not None:
-                return exported_payload
             if isinstance(exc, ValueError):
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             raise HTTPException(status_code=500, detail="Unable to load run payload.") from exc
@@ -404,8 +411,6 @@ def create_app(
             requested_models = list(API_PUBLIC_LIMITS["allowed_models"])
         normalized_run_type = _normalize_run_type(run_type)
         normalized_mode = _normalize_benchmark_mode(mode)
-        if normalized_mode == "dense" and len(requested_models) > 2:
-            requested_models = requested_models[:2]
 
         artifacts_path = Path(app.state.artifacts_dir)
         if preview_id is not None and preview_id.strip() and upload is None:
@@ -1110,7 +1115,7 @@ def _build_segment_preview_payload(
     )
     segments = _subsample_preview_segments(
         segmenter.segment(video_meta),
-        int(API_PUBLIC_LIMITS.get("max_segments", 6)),
+        int(API_PUBLIC_LIMITS.get("max_segments", MAX_SEGMENTS)),
     )
 
     segment_payloads: list[dict[str, Any]] = []
@@ -1480,12 +1485,19 @@ def _clean_error_text(text: str) -> str:
     return strip_ansi(text).replace("\r", "").strip()
 
 
-def _write_request_benchmark_config(destination: Path, requested_models: list[str]) -> Path:
+def _write_request_benchmark_config(
+    destination: Path,
+    requested_models: list[str],
+    mode: str = "coarse",
+) -> Path:
     payload = yaml.safe_load(PUBLIC_BENCHMARK_CONFIG.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("Public benchmark config is invalid.")
 
     payload["models"] = list(requested_models)
+    if mode == "dense":
+        payload["labeling_mode"] = "dense"
+        payload["taxonomy"] = "configs/taxonomy.yaml"
     destination.write_text(
         yaml.safe_dump(payload, sort_keys=False),
         encoding="utf-8",
@@ -1522,6 +1534,7 @@ def _run_benchmark_job(
         benchmark_config_path = _write_request_benchmark_config(
             work_dir / "benchmark.request.yaml",
             requested_models,
+            mode=mode,
         )
         _update_job_stage(
             artifacts_dir,
@@ -1546,7 +1559,7 @@ def _run_benchmark_job(
             "--model-filter",
             ",".join(requested_models),
             "--max-segments",
-            str(API_PUBLIC_LIMITS.get("max_segments", 6)),
+            str(API_PUBLIC_LIMITS.get("max_segments", MAX_SEGMENTS)),
             "--public",
             "--llm-judge",
             "--artifacts",

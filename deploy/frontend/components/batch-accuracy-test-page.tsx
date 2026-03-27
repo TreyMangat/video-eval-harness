@@ -43,8 +43,8 @@ type JobState = {
 };
 
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
-  max_clip_s: 600,
-  max_file_size_mb: 100,
+  max_clip_s: 3_600,
+  max_file_size_mb: 500,
   max_models: DEFAULT_MODEL_CATALOG.length,
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
 };
@@ -63,6 +63,18 @@ function isAcceptedFile(file: File): boolean {
 
 function formatFileSize(file: File): string {
   return `${(file.size / 1_048_576).toFixed(1)}MB`;
+}
+
+function formatClipLimit(maxClipS: number): string {
+  if (maxClipS >= 3_600 && maxClipS % 3_600 === 0) {
+    const hours = maxClipS / 3_600;
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  if (maxClipS >= 60 && maxClipS % 60 === 0) {
+    const minutes = maxClipS / 60;
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+  return `${maxClipS} seconds`;
 }
 
 function fallbackModelOptions(): ApiModel[] {
@@ -544,14 +556,6 @@ export function BatchAccuracyTestPage({
       return;
     }
 
-    const oversized = files.find(
-      (file) => file.size > limits.max_file_size_mb * 1024 * 1024
-    );
-    if (oversized) {
-      setErrorMessage(`"${oversized.name}" is too large. Max ${limits.max_file_size_mb}MB.`);
-      return;
-    }
-
     setErrorMessage(null);
     resetSubmissionState();
     setUploadedVideos((current) => mergeUploadedVideos(current, files));
@@ -856,7 +860,8 @@ assembly_line.mp4,operating press`}</pre>
                     <p>Drop {csvData.videos.length} video files here</p>
                     <p className="drop-sub">or click to browse</p>
                     <p className="upload-inline-note">
-                      Max {limits.max_file_size_mb}MB per file. Supported: {ACCEPTED_TYPES.join(" ")}
+                      Max {formatClipLimit(limits.max_clip_s)} | Max {limits.max_file_size_mb}MB
+                      per file | Supported: {ACCEPTED_TYPES.join(" ")}
                     </p>
                   </div>
 

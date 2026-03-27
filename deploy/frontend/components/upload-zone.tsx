@@ -22,9 +22,10 @@ const DEFAULT_SEGMENT_ESTIMATE = 3;
 const API_WARMUP_ATTEMPTS = 12;
 const API_WARMUP_INTERVAL_MS = 5_000;
 const API_WARMUP_TIMEOUT_MS = 8_000;
+const DENSE_RECOMMENDED_MODEL_NAMES = ["gemini-3-flash", "qwen3.5-27b"];
 const DEFAULT_LIMITS: HealthPayload["limits"] = {
-  max_clip_s: 600,
-  max_file_size_mb: 100,
+  max_clip_s: 3_600,
+  max_file_size_mb: 500,
   max_models: DEFAULT_MODEL_CATALOG.length,
   allowed_models: DEFAULT_MODEL_CATALOG.map((model) => model.name),
 };
@@ -54,6 +55,10 @@ function formatFileSize(file: File): string {
 }
 
 function formatClipLimit(maxClipS: number): string {
+  if (maxClipS >= 3_600 && maxClipS % 3_600 === 0) {
+    const hours = maxClipS / 3_600;
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
   if (maxClipS >= 60 && maxClipS % 60 === 0) {
     const minutes = maxClipS / 60;
     return `${minutes} minute${minutes === 1 ? "" : "s"}`;
@@ -77,6 +82,10 @@ function fallbackModelOptions(): ApiModel[] {
 
 function isJobActive(job: JobState | null): job is JobState {
   return job != null;
+}
+
+function selectionsMatch(current: string[], expected: string[]): boolean {
+  return current.length === expected.length && current.every((value, index) => value === expected[index]);
 }
 
 function fallbackTier(modelName: string): "fast" | "frontier" {
@@ -169,9 +178,6 @@ export function UploadZone() {
   const [completedBenchmark, setCompletedBenchmark] = useState<CompletedBenchmark | null>(null);
 
   const limits = health?.limits ?? DEFAULT_LIMITS;
-  const maxModels = segMode === "dense" ? Math.min(2, limits.max_models) : limits.max_models;
-  const modelLimitHint =
-    segMode === "dense" ? Math.min(2, limits.max_models) : limits.max_models;
   const modelOptionsByName = useMemo(
     () => new Map(modelOptions.map((model) => [model.name, model])),
     [modelOptions]
@@ -184,6 +190,15 @@ export function UploadZone() {
     () => modelOptions.filter((model) => modelTier(model) === "frontier"),
     [modelOptions]
   );
+  const denseRecommendedModels = useMemo(() => {
+    const preferred = DENSE_RECOMMENDED_MODEL_NAMES.filter((modelName) =>
+      limits.allowed_models.includes(modelName)
+    );
+    if (preferred.length > 0) {
+      return preferred;
+    }
+    return DEFAULT_ALLOWED_MODELS.filter((modelName) => limits.allowed_models.includes(modelName)).slice(0, 2);
+  }, [limits.allowed_models]);
   const selectedFileLabel = useMemo(() => {
     if (!selectedFile) {
       return null;
@@ -214,17 +229,35 @@ export function UploadZone() {
       ),
     [modelOptionsByName, selectedModels]
   );
+  const denseEstimatedCalls = estimatedSegmentCount * selectedModels.length;
 
   useEffect(() => {
-    setSelectedModels((current) => current.slice(0, maxModels));
-  }, [maxModels]);
+    if (segMode !== "dense") {
+      return;
+    }
+
+    setSelectedModels((current) => {
+      const allowedSelection = current.filter((modelName) => limits.allowed_models.includes(modelName));
+      const defaultFastSelection = DEFAULT_ALLOWED_MODELS.filter((modelName) =>
+        limits.allowed_models.includes(modelName)
+      );
+
+      if (
+        denseRecommendedModels.length > 0 &&
+        (allowedSelection.length === 0 || selectionsMatch(allowedSelection, defaultFastSelection))
+      ) {
+        return denseRecommendedModels;
+      }
+
+      return allowedSelection;
+    });
+  }, [denseRecommendedModels, limits.allowed_models, segMode]);
 
   function applyHealthPayload(healthPayload: HealthPayload): void {
     setHealth(healthPayload);
     setSelectedModels((current) => {
       const preserved = current
         .filter((modelName) => healthPayload.limits.allowed_models.includes(modelName))
-        .slice(0, healthPayload.limits.max_models);
       return preserved.length > 0
         ? preserved
         : healthPayload.limits.allowed_models.slice(0, healthPayload.limits.max_models);
@@ -490,11 +523,6 @@ export function UploadZone() {
       return;
     }
 
-    if (file.size > limits.max_file_size_mb * 1024 * 1024) {
-      setErrorMessage(`File too large. Max ${limits.max_file_size_mb}MB.`);
-      return;
-    }
-
     setSelectedFile(file);
     setErrorMessage(null);
     setStatusMessage(null);
@@ -523,10 +551,6 @@ export function UploadZone() {
       if (current.includes(modelName)) {
         return current.filter((value) => value !== modelName);
       }
-      if (current.length >= maxModels) {
-        setErrorMessage(`Select up to ${maxModels} models per run.`);
-        return current;
-      }
       return [...current, modelName];
     });
   }
@@ -543,9 +567,6 @@ export function UploadZone() {
           type="checkbox"
           checked={checked}
           onChange={() => toggleModel(model.name)}
-          disabled={
-            isSubmitting || isJobActive(job) || (!checked && selectedModels.length >= maxModels)
-          }
         />
       </label>
     );
@@ -754,11 +775,12 @@ export function UploadZone() {
                   strokeLinejoin="round"
                 />
               </svg>
-              <p className="upload-inline-title">Drop a short video clip here</p>
+              <p className="upload-inline-title">Drop a video clip here</p>
               <p className="upload-inline-copy">or click to browse</p>
               <p className="upload-inline-note">
-                Max {formatClipLimit(limits.max_clip_s)} | Max {limits.max_file_size_mb}MB | up
-                to {modelLimitHint} models
+                {segMode === "dense"
+                  ? `Max ${formatClipLimit(limits.max_clip_s)} | Max ${limits.max_file_size_mb}MB | 2 models recommended`
+                  : `Max ${formatClipLimit(limits.max_clip_s)} | Max ${limits.max_file_size_mb}MB | up to ${limits.max_models} models`}
               </p>
               <div className="upload-inline-type-list" aria-label="Supported file types">
                 {ACCEPTED_TYPES.map((type) => (
@@ -863,15 +885,21 @@ export function UploadZone() {
                     <strong>Dense</strong>
                     <p>
                       3-second segments, structured verb+noun labels from a controlled vocabulary.
-                      More granular but limited to 2 models.
+                      More granular and structured. Two models are recommended.
                     </p>
                   </div>
                 </label>
               </div>
               {segMode === "dense" ? (
                 <p className="dense-model-note">
-                  Dense mode is limited to 2 models to control costs (3x more segments than
-                  standard).
+                  Dense mode defaults to 2 models. More models = proportionally higher cost.
+                </p>
+              ) : null}
+              {segMode === "dense" && selectedModels.length > 2 ? (
+                <p className="dense-model-warning">
+                  You&apos;ve selected {selectedModels.length} models for dense mode. This will
+                  generate ~{denseEstimatedCalls} API calls. Estimated cost: ~$
+                  {estimatedCost.toFixed(2)}
                 </p>
               ) : null}
             </div>
