@@ -31,6 +31,7 @@ import { getRunType } from "../../../lib/run-type";
 import { loadRun } from "../../../lib/run-source";
 import type {
   AccuracyMetric,
+  ConsensusEntry,
   GroundTruthEntry,
   LabelResult,
   RunPayload,
@@ -163,6 +164,82 @@ function getUniqueSegments(results: LabelResult[]): ReportSegment[] {
   return [...seen.values()].sort(
     (left, right) =>
       left.video_id.localeCompare(right.video_id) || left.start_s - right.start_s
+  );
+}
+
+function getConsensusEntries(run: RunPayload): ConsensusEntry[] {
+  return Array.isArray(run.consensus) ? run.consensus : [];
+}
+
+function getConsensusAction(consensus: ConsensusEntry | null | undefined): string | null {
+  const explicitAction = consensus?.consensus_action?.trim();
+  if (explicitAction) {
+    return explicitAction;
+  }
+
+  const verb = consensus?.action_verb?.trim();
+  const noun = consensus?.action_noun?.trim();
+  if (verb && noun) {
+    return `${verb} ${noun}`;
+  }
+
+  return null;
+}
+
+function getConsensusForSegment(
+  segment: ReportSegment,
+  consensusEntries: ConsensusEntry[]
+): ConsensusEntry | null {
+  return (
+    consensusEntries.find(
+      (consensus) =>
+        consensus.segment_id === segment.segment_id ||
+        (consensus.video_id === segment.video_id &&
+          Math.abs(
+            safeNumber(consensus.start_s ?? consensus.start_time_s) - safeNumber(segment.start_s)
+          ) < 1)
+    ) ?? null
+  );
+}
+
+function consensusSummaryText(run: RunPayload): string | null {
+  const unanimousRate = toNullableNumber(run.consensus_summary?.unanimous_rate);
+  if (unanimousRate == null) {
+    return null;
+  }
+  const normalized = unanimousRate > 1 ? unanimousRate / 100 : unanimousRate;
+  return `${Math.round(Math.max(0, Math.min(1, normalized)) * 100)}% of segments had unanimous agreement across all models`;
+}
+
+function consensusMetaLabel(consensus: ConsensusEntry | null | undefined): string {
+  if (consensus?.method === "unanimous") {
+    return "All models agree";
+  }
+
+  if (consensus?.method === "majority") {
+    const ratio = toNullableNumber(consensus.agreement_ratio);
+    if (ratio != null) {
+      const normalized = ratio > 1 ? ratio / 100 : ratio;
+      return `${Math.round(Math.max(0, Math.min(1, normalized)) * 100)}% majority`;
+    }
+    return "Majority vote";
+  }
+
+  return "Highest confidence";
+}
+
+function ConsensusCard({ consensus }: { consensus: ConsensusEntry }) {
+  const action = getConsensusAction(consensus);
+  if (!action) {
+    return null;
+  }
+
+  return (
+    <div className="consensus-label-card">
+      <span className="consensus-label-header">CONSENSUS</span>
+      <span className="consensus-label-text">{action}</span>
+      <span className="consensus-meta">{consensusMetaLabel(consensus)}</span>
+    </div>
   );
 }
 
@@ -500,6 +577,8 @@ function DenseReport({
 }) {
   const denseSegments = segments.length > 0 ? segments : getUniqueSegments(results);
   const models = [...new Set((results || []).map((result) => result.model_name).filter(Boolean))];
+  const consensusEntries = getConsensusEntries(run);
+  const consensusSummary = consensusSummaryText(run);
 
   return (
     <>
@@ -517,6 +596,13 @@ function DenseReport({
           <p className="report-subhead">{displayRunName(run.run_id, run.config.created_at)}</p>
           <RunTypeBadge run={run} />
         </div>
+
+        {consensusSummary ? (
+          <div className="consensus-summary">
+            <span className="consensus-summary-label">Consensus</span>
+            <span className="consensus-summary-value">{consensusSummary}</span>
+          </div>
+        ) : null}
 
         <div className="dense-stats">
           <div className="dense-stat">
@@ -564,6 +650,7 @@ function DenseReport({
         {denseSegments.length > 0 ? (
           <div className="dense-segment-list">
             {(denseSegments || []).map((segment) => {
+              const segmentConsensus = getConsensusForSegment(segment, consensusEntries);
               const firstResult =
                 models.length === 2 ? getModelResult(segment, models[0], results) : null;
               const secondResult =
@@ -644,6 +731,7 @@ function DenseReport({
                         </div>
                       );
                     })}
+                    {segmentConsensus ? <ConsensusCard consensus={segmentConsensus} /> : null}
                   </div>
 
                   {matchBadge}
@@ -734,6 +822,8 @@ export default async function RunReportPage({
     segments.length > 0 ? normalizeReportSegments(segments) : getUniqueSegments(displayedResults);
   const agreement = run.agreement && typeof run.agreement === "object" ? run.agreement : {};
   const groundTruth = Array.isArray(run.ground_truth) ? run.ground_truth : null;
+  const consensusEntries = getConsensusEntries(run);
+  const consensusSummary = consensusSummaryText(run);
   const rows = buildCoreComparisonRows(run, sweepData);
   const comparisonWinner = bestOverallModel(rows);
   const comparisonBestValue = bestValueModel(rows, segments.length || 1);
@@ -789,6 +879,12 @@ export default async function RunReportPage({
           </p>
           <RunTypeBadge run={run} />
         </div>
+        {consensusSummary ? (
+          <div className="consensus-summary">
+            <span className="consensus-summary-label">Consensus</span>
+            <span className="consensus-summary-value">{consensusSummary}</span>
+          </div>
+        ) : null}
         {isAccuracyReport ? (
           <p className="report-accuracy-note">
             {hasGroundTruth
@@ -900,6 +996,7 @@ export default async function RunReportPage({
           <div className="segment-list">
             {(allSegments || []).map((segment) => {
               const groundTruthLabel = getGroundTruthLabel(segment, groundTruth);
+              const segmentConsensus = getConsensusForSegment(segment, consensusEntries);
               return (
                 <div key={segment.segment_id} className="segment-row">
                   <div className="segment-header">
@@ -946,6 +1043,7 @@ export default async function RunReportPage({
                         </div>
                       );
                     })}
+                    {segmentConsensus ? <ConsensusCard consensus={segmentConsensus} /> : null}
                   </div>
                 </div>
               );

@@ -3,6 +3,8 @@ import path from "path";
 
 import type {
   AccuracyMetric,
+  ConsensusEntry,
+  ConsensusSummary,
   FramePreview,
   GroundTruthEntry,
   LabelResult,
@@ -24,6 +26,8 @@ type JsonRunBundle = {
   ground_truth: GroundTruthEntry[] | null;
   config_overrides: Partial<RunPayload["config"]>;
   taxonomy_agreement: Record<string, unknown> | null;
+  consensus: ConsensusEntry[] | null;
+  consensus_summary: ConsensusSummary | null;
 };
 const FLAT_RUN_FILE_PATTERN = /^(run_.+)_results\.(json|csv)$/i;
 const RUN_METADATA_FILENAME = "run_metadata.json";
@@ -415,6 +419,24 @@ function coerceTaxonomyAgreement(raw: unknown): Record<string, unknown> | null {
   return raw as Record<string, unknown>;
 }
 
+function coerceConsensus(raw: unknown): ConsensusEntry[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+
+  const entries = raw.filter(
+    (entry): entry is ConsensusEntry => Boolean(entry && typeof entry === "object")
+  );
+  return entries.length > 0 ? entries : null;
+}
+
+function coerceConsensusSummary(raw: unknown): ConsensusSummary | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  return raw as ConsensusSummary;
+}
+
 async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRunBundle | null> {
   const artifactPath = await findRunArtifact(runId, "json", dataDir);
   if (!artifactPath) {
@@ -432,6 +454,8 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
       ground_truth: null,
       config_overrides: {},
       taxonomy_agreement: null,
+      consensus: null,
+      consensus_summary: null,
     };
   }
   if (!raw || typeof raw !== "object") {
@@ -455,6 +479,8 @@ async function loadJsonResults(runId: string, dataDir?: string): Promise<JsonRun
       ...(readString(record.display_name) ? { display_name: readString(record.display_name) } : {}),
     },
     taxonomy_agreement: coerceTaxonomyAgreement(record.taxonomy_agreement),
+    consensus: coerceConsensus(record.consensus),
+    consensus_summary: coerceConsensusSummary(record.consensus_summary),
   };
 }
 
@@ -485,6 +511,8 @@ async function loadRunResults(
       ground_truth: null,
       config_overrides: {},
       taxonomy_agreement: null,
+      consensus: null,
+      consensus_summary: null,
     };
 }
 
@@ -707,6 +735,8 @@ export async function loadArtifactRun(
     llm_accuracy: runData.llm_accuracy,
     ground_truth: groundTruth,
     taxonomy_agreement: runData.taxonomy_agreement,
+    consensus: runData.consensus,
+    consensus_summary: runData.consensus_summary,
   };
 }
 

@@ -47,6 +47,24 @@ export type GroundTruthEntry = {
   source?: string | null;
 };
 
+export type ConsensusEntry = {
+  segment_id?: string | null;
+  video_id?: string | null;
+  start_s?: number | null;
+  end_s?: number | null;
+  start_time_s?: number | null;
+  end_time_s?: number | null;
+  consensus_action?: string | null;
+  method?: "unanimous" | "majority" | "highest_confidence" | string | null;
+  agreement_ratio?: number | null;
+  action_verb?: string | null;
+  action_noun?: string | null;
+};
+
+export type ConsensusSummary = {
+  unanimous_rate?: number | null;
+};
+
 export type LabelResult = {
   run_id: string;
   video_id: string;
@@ -131,6 +149,8 @@ export type RunPayload = {
   segments: SegmentSummary[];
   results: LabelResult[];
   ground_truth?: GroundTruthEntry[] | null;
+  consensus?: ConsensusEntry[] | null;
+  consensus_summary?: ConsensusSummary | null;
   sweep?: SweepMetrics;
   taxonomy_agreement?: Record<string, unknown> | null;
 };
