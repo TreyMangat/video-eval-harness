@@ -1967,6 +1967,11 @@ def _normalize_export_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
                         else []
                     ),
                     "has_contact_sheet": bool(raw_segment.get("has_contact_sheet", False)),
+                    "consensus": (
+                        raw_segment.get("consensus")
+                        if isinstance(raw_segment.get("consensus"), dict)
+                        else None
+                    ),
                 }
             )
         if normalized_segments:
@@ -2067,6 +2072,8 @@ def _normalize_export_payload(
         "models": models,
         "prompt_version": str(config.get("prompt_version") or "unknown"),
         "segmentation_mode": str(config.get("segmentation_mode") or "unknown"),
+        "labeling_mode": config.get("labeling_mode"),
+        "taxonomy_path": config.get("taxonomy_path"),
         "segmentation_config": (
             config.get("segmentation_config")
             if isinstance(config.get("segmentation_config"), dict)
@@ -2277,6 +2284,15 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "run_type": _load_stored_run_type(run_dir),
+        "labeling_mode": (
+            run_config.labeling_mode.value
+            if hasattr(run_config.labeling_mode, "value")
+            else (
+                str(run_config.labeling_mode)
+                if getattr(run_config, "labeling_mode", None) is not None
+                else None
+            )
+        ),
         "config": run_config.model_dump(),
         "models": models,
         "videos": [

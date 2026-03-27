@@ -55,14 +55,22 @@ export type ConsensusEntry = {
   start_time_s?: number | null;
   end_time_s?: number | null;
   consensus_action?: string | null;
+  label?: string | null;
   method?: "unanimous" | "majority" | "highest_confidence" | string | null;
+  agreement?: number | null;
   agreement_ratio?: number | null;
+  votes?: Record<string, number> | null;
   action_verb?: string | null;
   action_noun?: string | null;
 };
 
 export type ConsensusSummary = {
+  total_segments?: number | null;
+  unanimous_count?: number | null;
+  majority_count?: number | null;
+  mean_agreement?: number | null;
   unanimous_rate?: number | null;
+  majority_rate?: number | null;
 };
 
 export type LabelResult = {
@@ -108,6 +116,7 @@ export type SegmentSummary = {
   frame_count: number;
   frame_timestamps_s: number[];
   has_contact_sheet: boolean;
+  consensus?: ConsensusEntry | null;
 };
 
 export type RunPayload = {
@@ -125,6 +134,7 @@ export type RunPayload = {
     display_name?: string | null;
     notes?: string | null;
     labeling_mode?: string | null;
+    taxonomy_path?: string | null;
   };
   labeling_mode?: string | null;
   models: string[];

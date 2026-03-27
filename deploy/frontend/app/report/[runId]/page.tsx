@@ -203,12 +203,46 @@ function getConsensusForSegment(
 }
 
 function consensusSummaryText(run: RunPayload): string | null {
-  const unanimousRate = toNullableNumber(run.consensus_summary?.unanimous_rate);
-  if (unanimousRate == null) {
+  const totalSegments = toNullableNumber(run.consensus_summary?.total_segments);
+  const unanimousCount = toNullableNumber(run.consensus_summary?.unanimous_count);
+  const majorityCount = toNullableNumber(run.consensus_summary?.majority_count);
+  const rawUnanimousRate = toNullableNumber(run.consensus_summary?.unanimous_rate);
+  const rawMajorityRate = toNullableNumber(run.consensus_summary?.majority_rate);
+
+  const normalizeRate = (value: number | null): number | null => {
+    if (value == null) {
+      return null;
+    }
+    return value > 1 ? value / 100 : value;
+  };
+
+  const resolvedUnanimousRate =
+    normalizeRate(rawUnanimousRate) ??
+    (totalSegments && totalSegments > 0 && unanimousCount != null ? unanimousCount / totalSegments : null);
+  const resolvedMajorityRate =
+    normalizeRate(rawMajorityRate) ??
+    (totalSegments && totalSegments > 0 && majorityCount != null ? majorityCount / totalSegments : null);
+
+  if (resolvedUnanimousRate == null && resolvedMajorityRate == null) {
     return null;
   }
-  const normalized = unanimousRate > 1 ? unanimousRate / 100 : unanimousRate;
-  return `${Math.round(Math.max(0, Math.min(1, normalized)) * 100)}% of segments had unanimous agreement across all models`;
+
+  const summaryParts: string[] = [];
+  if (resolvedUnanimousRate != null) {
+    summaryParts.push(
+      `${Math.round(Math.max(0, Math.min(1, resolvedUnanimousRate)) * 100)}% unanimous`
+    );
+  }
+  if (resolvedMajorityRate != null) {
+    summaryParts.push(
+      `${Math.round(Math.max(0, Math.min(1, resolvedMajorityRate)) * 100)}% majority`
+    );
+  }
+  if (totalSegments != null) {
+    summaryParts.push(`${Math.round(totalSegments)} segments`);
+  }
+
+  return summaryParts.join(" · ");
 }
 
 function consensusMetaLabel(consensus: ConsensusEntry | null | undefined): string {
