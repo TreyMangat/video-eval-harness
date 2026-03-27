@@ -90,6 +90,42 @@ function formatConfidence(value: number | null | undefined): string | null {
   return `${Math.round(Math.max(0, Math.min(1, normalized)) * 100)}%`;
 }
 
+type FlattenedActionLabelResult = LabelResult & {
+  action_verb?: string | null;
+  action_noun?: string | null;
+  action_verb_class?: number | null;
+  action_noun_class?: number | null;
+  action_confidence?: number | null;
+};
+
+function hasFlattenedActionFields(result: LabelResult | null | undefined): boolean {
+  const candidate = result as FlattenedActionLabelResult | null | undefined;
+  return candidate?.action_verb != null || candidate?.action_noun != null;
+}
+
+function getActionLabel(result: LabelResult | null | undefined) {
+  if (result?.action_label) {
+    return result.action_label;
+  }
+
+  const candidate = result as FlattenedActionLabelResult | null | undefined;
+  const verb = candidate?.action_verb?.trim();
+  const noun = candidate?.action_noun?.trim();
+
+  if (verb && noun) {
+    return {
+      verb,
+      noun,
+      action: `${verb} ${noun}`,
+      verb_class: candidate?.action_verb_class ?? undefined,
+      noun_class: candidate?.action_noun_class ?? undefined,
+      confidence: candidate?.action_confidence ?? candidate?.confidence ?? undefined,
+    };
+  }
+
+  return null;
+}
+
 function normalizeReportSegments(segments: SegmentSummary[]): ReportSegment[] {
   return (segments || []).map((segment) => ({
       segment_id: segment.segment_id,
@@ -439,7 +475,7 @@ function topDenseLabelCounts(
   const counts = new Map<string, number>();
 
   for (const result of results) {
-    const value = result.action_label?.[field]?.trim();
+    const value = getActionLabel(result)?.[field]?.trim();
     if (!value) {
       continue;
     }
@@ -502,7 +538,7 @@ function DenseReport({
                     const parsedCount = modelResults.filter(
                       (result) =>
                         result.parsed_success !== false &&
-                        (result.action_label != null || Boolean(result.primary_action))
+                        (getActionLabel(result) != null || Boolean(result.primary_action))
                     ).length;
                     const rate =
                       modelResults.length > 0
@@ -532,8 +568,8 @@ function DenseReport({
                 models.length === 2 ? getModelResult(segment, models[0], results) : null;
               const secondResult =
                 models.length === 2 ? getModelResult(segment, models[1], results) : null;
-              const firstActionLabel = firstResult?.action_label;
-              const secondActionLabel = secondResult?.action_label;
+              const firstActionLabel = getActionLabel(firstResult);
+              const secondActionLabel = getActionLabel(secondResult);
               const verbMatch =
                 firstActionLabel?.verb && secondActionLabel?.verb
                   ? firstActionLabel.verb === secondActionLabel.verb
@@ -568,7 +604,7 @@ function DenseReport({
                   <div className="dense-model-labels">
                     {(models || []).map((modelName) => {
                       const result = getModelResult(segment, modelName, results);
-                      const actionLabel = result?.action_label;
+                      const actionLabel = getActionLabel(result);
                       const parsed =
                         result?.parsed_success !== false &&
                         (actionLabel != null || Boolean(result?.primary_action));
@@ -629,7 +665,7 @@ function DenseReport({
         <div className="dense-frequency">
           {(models || []).map((modelName) => {
             const modelResults = results.filter(
-              (result) => result.model_name === modelName && result.action_label != null
+              (result) => result.model_name === modelName && getActionLabel(result) != null
             );
             const topVerbs = topDenseLabelCounts(modelResults, "verb");
             const topNouns = topDenseLabelCounts(modelResults, "noun");
@@ -718,9 +754,10 @@ export default async function RunReportPage({
   const isDenseMode =
     run.labeling_mode === "dense" ||
     run.config?.labeling_mode === "dense" ||
+    results.some((result) => result.labeling_mode?.trim().toLowerCase() === "dense") ||
+    results.some((result) => hasFlattenedActionFields(result)) ||
     results.some(
-      (result) =>
-        result.action_label != null || result.labeling_mode?.trim().toLowerCase() === "dense"
+      (result) => getActionLabel(result) != null
     );
 
   return (
@@ -878,9 +915,10 @@ export default async function RunReportPage({
                   <div className="model-labels">
                     {(models || []).map((modelName) => {
                       const result = getModelResult(segment, modelName, displayedResults);
+                      const actionLabel = getActionLabel(result);
                       const parsed = result ? result.parsed_success !== false : true;
                       const confidenceLabel = formatConfidence(
-                        result?.action_label?.confidence ?? result?.confidence ?? null
+                        actionLabel?.confidence ?? result?.confidence ?? null
                       );
 
                       return (
@@ -892,10 +930,10 @@ export default async function RunReportPage({
                           <span className="model-label-name">{modelName}</span>
                           {result && !parsed ? (
                             <span className="model-label-error">Failed to parse</span>
-                          ) : isDenseMode && result?.action_label ? (
+                          ) : isDenseMode && actionLabel ? (
                             <div className="dense-label">
-                              <span className="verb-tag">{result.action_label.verb}</span>
-                              <span className="noun-tag">{result.action_label.noun}</span>
+                              <span className="verb-tag">{actionLabel.verb}</span>
+                              <span className="noun-tag">{actionLabel.noun}</span>
                             </div>
                           ) : (
                             <span className="model-label-text">
