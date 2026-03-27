@@ -16,9 +16,9 @@ def client(tmp_path):
     return TestClient(app)
 
 
-def test_post_benchmark_rejects_files_over_100mb(client, monkeypatch) -> None:
+def test_post_benchmark_rejects_files_over_limit(client, monkeypatch) -> None:
     async def oversize_upload(*args, **kwargs):
-        raise HTTPException(status_code=422, detail="File too large. Max 100MB.")
+        raise HTTPException(status_code=422, detail="File too large. Max 500MB.")
 
     monkeypatch.setattr("deploy.api_server._save_upload_file", oversize_upload)
 
@@ -28,13 +28,13 @@ def test_post_benchmark_rejects_files_over_100mb(client, monkeypatch) -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "File too large. Max 100MB."
+    assert response.json()["detail"] == "File too large. Max 500MB."
 
 
-def test_post_benchmark_rejects_video_longer_than_60s(client, monkeypatch) -> None:
+def test_post_benchmark_rejects_video_longer_than_600s(client, monkeypatch) -> None:
     monkeypatch.setattr(
         "deploy.api_server.probe_video",
-        lambda path: SimpleNamespace(duration_s=61.0),
+        lambda path: SimpleNamespace(duration_s=601.0),
     )
 
     response = client.post(
@@ -43,7 +43,7 @@ def test_post_benchmark_rejects_video_longer_than_60s(client, monkeypatch) -> No
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "Clip too long. Max 60s."
+    assert response.json()["detail"] == "Clip too long. Max 600s."
 
 
 def test_get_health_returns_limits_structure(client) -> None:
@@ -53,8 +53,8 @@ def test_get_health_returns_limits_structure(client) -> None:
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["version"] == "0.3.0"
-    assert payload["limits"]["max_clip_s"] == 60
-    assert payload["limits"]["max_file_size_mb"] == 100
+    assert payload["limits"]["max_clip_s"] == 600
+    assert payload["limits"]["max_file_size_mb"] == 500
     assert payload["limits"]["max_models"] == 7
     assert payload["limits"]["allowed_models"] == [
         "gemini-3-flash",

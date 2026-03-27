@@ -7,9 +7,9 @@ from .log import get_logger
 logger = get_logger(__name__)
 
 PUBLIC_LIMITS = {
-    "max_clip_duration_s": 60,
-    "max_file_size_mb": 100,
-    "max_segments": 6,
+    "max_clip_duration_s": 3600,  # 1 hour
+    "max_file_size_mb": 500,
+    "max_segments": 500,
     "max_models": 7,
     "allowed_models": [
         # Fast tier
