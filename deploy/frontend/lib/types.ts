@@ -73,6 +73,22 @@ export type ConsensusSummary = {
   majority_rate?: number | null;
 };
 
+export type EnsembleSegmentResult = {
+  segment_id: string;
+  ensemble_label: string;
+  ground_truth: string;
+  correct: boolean;
+};
+
+export type EnsembleResult = {
+  ensemble_accuracy: number;
+  best_single_model: string;
+  best_single_accuracy: number;
+  improvement: number;
+  model_weights_used: Record<string, number>;
+  per_segment: EnsembleSegmentResult[];
+};
+
 export type LabelResult = {
   run_id: string;
   video_id: string;
@@ -122,6 +138,7 @@ export type SegmentSummary = {
 export type RunPayload = {
   run_id: string;
   run_type?: "comparison" | "accuracy_test" | null;
+  has_ensemble?: boolean;
   config: {
     models: string[];
     prompt_version: string;
@@ -189,6 +206,7 @@ export type RunListItem = {
   prompt_version: string;
   video_ids: string[];
   run_type?: "comparison" | "accuracy_test" | null;
+  has_ensemble?: boolean;
 };
 
 export type ModelCatalogItem = {

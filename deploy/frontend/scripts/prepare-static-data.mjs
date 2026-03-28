@@ -19,7 +19,9 @@ if (!existsSync(sourceDataDir)) {
 }
 
 const runFiles = readdirSync(sourceDataDir, { withFileTypes: true })
-  .filter((entry) => entry.isFile() && /_results\.json$/i.test(entry.name))
+  .filter(
+    (entry) => entry.isFile() && /(_results|_ensemble_results)\.json$/i.test(entry.name)
+  )
   .map((entry) => entry.name)
   .sort();
 

@@ -34,6 +34,7 @@ DEFAULT_JOBS_DIR = "jobs"
 DEFAULT_PREVIEWS_DIR = "previews"
 UPLOADS_DIR = "uploads"
 RUN_METADATA_FILENAME = "run_metadata.json"
+ENSEMBLE_RESULTS_FILENAME = "ensemble_results.json"
 PUBLIC_BENCHMARK_CONFIG = ROOT / "configs" / "benchmark_all_models_optimized.yaml"
 ALLOWED_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 ALLOWED_RUN_TYPES = {"comparison", "accuracy_test"}
@@ -284,6 +285,14 @@ def create_app(
             if isinstance(exc, ValueError):
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             raise HTTPException(status_code=500, detail="Unable to load run payload.") from exc
+
+    @app.get("/api/runs/{run_id}/ensemble")
+    async def get_run_ensemble(run_id: str) -> dict[str, Any]:
+        app.state.refresh_artifacts()
+        payload = _load_ensemble_results_payload(Path(app.state.artifacts_dir), run_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail=f"No ensemble results found for '{run_id}'.")
+        return payload
 
     @app.get("/api/runs/{run_id}/segments/{segment_id}/media")
     async def get_segment_media(
@@ -1007,6 +1016,10 @@ def _normalize_benchmark_mode(value: Optional[str]) -> str:
 
 def _run_metadata_path(run_dir: Path) -> Path:
     return run_dir / RUN_METADATA_FILENAME
+
+
+def _ensemble_results_path(run_dir: Path) -> Path:
+    return run_dir / ENSEMBLE_RESULTS_FILENAME
 
 
 def _load_run_metadata(run_dir: Path) -> dict[str, Any]:
@@ -1735,6 +1748,7 @@ def _list_runs(artifacts_dir: Path) -> list[dict[str, Any]]:
                 "prompt_version": run.prompt_version,
                 "video_ids": run.video_ids,
                 "run_type": _load_stored_run_type(run_dir),
+                "has_ensemble": _has_ensemble_results(run_dir),
             }
         )
 
@@ -1801,6 +1815,7 @@ def _load_run_meta_from_exports(run_dir: Path) -> Optional[dict[str, Any]]:
         "prompt_version": "action_label",
         "video_ids": video_ids,
         "run_type": _load_stored_run_type(run_dir),
+        "has_ensemble": _ensemble_results_path(run_dir).exists(),
     }
 
 
@@ -1811,6 +1826,24 @@ def _run_export_candidates(artifacts_dir: Path, run_id: str) -> list[Path]:
         runs_dir / run_id / "results.json",
         runs_dir / f"{run_id}_results.json",
     ]
+
+
+def _has_ensemble_results(run_dir: Optional[Path]) -> bool:
+    return bool(run_dir and _ensemble_results_path(run_dir).exists())
+
+
+def _load_ensemble_results_payload(artifacts_dir: Path, run_id: str) -> Optional[dict[str, Any]]:
+    run_dir = _runs_dir(artifacts_dir) / run_id
+    path = _ensemble_results_path(run_dir)
+    if not path.exists():
+        return None
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    return payload if isinstance(payload, dict) else None
 
 
 def _load_export_json(artifacts_dir: Path, run_id: str) -> Optional[Any]:
@@ -2103,6 +2136,7 @@ def _normalize_export_payload(
         **payload,
         "run_id": str(payload.get("run_id") or run_id),
         "run_type": _load_stored_run_type(run_dir) if run_dir is not None else None,
+        "has_ensemble": _has_ensemble_results(run_dir),
         "config": normalized_config,
         "models": models,
         "videos": videos,
@@ -2284,6 +2318,7 @@ def _build_run_payload(storage: Storage, run_id: str) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "run_type": _load_stored_run_type(run_dir),
+        "has_ensemble": _has_ensemble_results(run_dir),
         "labeling_mode": (
             run_config.labeling_mode.value
             if hasattr(run_config.labeling_mode, "value")

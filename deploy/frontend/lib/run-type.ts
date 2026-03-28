@@ -8,6 +8,7 @@ type SummaryLike = {
 export type RunTypeLike = {
   run_id?: string;
   run_type?: "comparison" | "accuracy_test" | null | string;
+  has_ensemble?: boolean;
   accuracy_by_model?: unknown;
   llm_accuracy?: unknown;
   ground_truth?: unknown;

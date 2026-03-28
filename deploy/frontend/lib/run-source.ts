@@ -1,10 +1,11 @@
-import { fetchRun, fetchRuns, fetchSegmentMedia, isInteractiveMode } from "./api-client";
+import { fetchEnsemble, fetchRun, fetchRuns, fetchSegmentMedia, isInteractiveMode } from "./api-client";
 import {
   listArtifactRuns,
+  loadArtifactEnsemble,
   loadArtifactRun,
   loadArtifactSegmentMedia,
 } from "./local-runs";
-import type { RunListItem, RunPayload, SegmentMedia } from "./types";
+import type { EnsembleResult, RunListItem, RunPayload, SegmentMedia } from "./types";
 
 const LIVE_FETCH_ATTEMPTS = 10;
 const LIVE_FETCH_DELAY_MS = 2_000;
@@ -103,6 +104,36 @@ export async function loadRun(
     return await loadArtifactRun(runId, dataDir);
   } catch (error) {
     console.error(`Failed to load local run ${runId}:`, error);
+    return null;
+  }
+}
+
+export async function loadEnsemble(
+  runId: string,
+  dataDir?: string
+): Promise<EnsembleResult | null> {
+  if (isInteractiveMode()) {
+    try {
+      const localEnsemble = await loadArtifactEnsemble(runId, dataDir);
+      if (localEnsemble) {
+        return localEnsemble;
+      }
+    } catch (localError) {
+      console.error(`Failed to load local ensemble for ${runId}:`, localError);
+    }
+
+    try {
+      return await retryLiveFetch(() => fetchEnsemble(runId));
+    } catch (liveError) {
+      console.error(`Failed to load live ensemble for ${runId}:`, liveError);
+      return null;
+    }
+  }
+
+  try {
+    return await loadArtifactEnsemble(runId, dataDir);
+  } catch (error) {
+    console.error(`Failed to load local ensemble for ${runId}:`, error);
     return null;
   }
 }

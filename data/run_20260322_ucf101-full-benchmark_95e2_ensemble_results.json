@@ -1,0 +1,1066 @@
+{
+  "ensemble_accuracy": 1.0,
+  "ensemble_correct": 16,
+  "ensemble_total": 16,
+  "per_segment": [
+    {
+      "segment_id": "vid_v_ApplyEyeMakeup_g01_c01_d6ab909737a1_seg0000",
+      "video_id": "vid_v_ApplyEyeMakeup_g01_c01_d6ab909737a1",
+      "ground_truth": "applying eye makeup",
+      "ensemble_label": "applying eye makeup",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "applying eye makeup": 0.2062,
+        "applying makeup": 0.1064
+      },
+      "raw_votes": {
+        "applying eye makeup": 2,
+        "applying makeup": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "applying eye makeup",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "applying eye makeup",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "applying makeup",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "applying eye makeup",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_Basketball_g01_c01_09321b17740e_seg0000",
+      "video_id": "vid_v_Basketball_g01_c01_09321b17740e",
+      "ground_truth": "playing basketball",
+      "ensemble_label": "playing basketball",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "playing basketball": 0.2129,
+        "shooting basketball": 0.0998
+      },
+      "raw_votes": {
+        "playing basketball": 2,
+        "shooting basketball": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "playing basketball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "shooting a basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "playing basketball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "shooting basketball",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_CuttingInKitchen_g01_c01_fc3ee6cee691_seg0000",
+      "video_id": "vid_v_CuttingInKitchen_g01_c01_fc3ee6cee691",
+      "ground_truth": "cutting in kitchen",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "cutting in kitchen": 0.3126
+      },
+      "raw_votes": {
+        "cutting in kitchen": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "slicing onion",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_CuttingInKitchen_g01_c01_fc3ee6cee691_seg0001",
+      "video_id": "vid_v_CuttingInKitchen_g01_c01_fc3ee6cee691",
+      "ground_truth": "cutting in kitchen",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "cutting in kitchen": 0.3126
+      },
+      "raw_votes": {
+        "cutting in kitchen": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "slicing onion",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "chopping vegetables",
+          "similarity": 0.7,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_CuttingInKitchen_g01_c02_cf9e65a1d891_seg0000",
+      "video_id": "vid_v_CuttingInKitchen_g01_c02_cf9e65a1d891",
+      "ground_truth": "cutting in kitchen",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "cutting in kitchen": 0.3126
+      },
+      "raw_votes": {
+        "cutting in kitchen": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "cutting in kitchen",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_Drumming_g01_c01_3b091dc8ac17_seg0000",
+      "video_id": "vid_v_Drumming_g01_c01_3b091dc8ac17",
+      "ground_truth": "playing drums",
+      "ensemble_label": "playing drums",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "playing drums": 0.3126
+      },
+      "raw_votes": {
+        "playing drums": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_Drumming_g01_c01_3b091dc8ac17_seg0001",
+      "video_id": "vid_v_Drumming_g01_c01_3b091dc8ac17",
+      "ground_truth": "playing drums",
+      "ensemble_label": "playing drums",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "playing drums": 0.3126
+      },
+      "raw_votes": {
+        "playing drums": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "playing drums",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_JumpingJack_g01_c01_90d209b130e7_seg0000",
+      "video_id": "vid_v_JumpingJack_g01_c01_90d209b130e7",
+      "ground_truth": "doing jumping jacks",
+      "ensemble_label": "doing jumping jacks",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "doing jumping jacks": 0.3126
+      },
+      "raw_votes": {
+        "doing jumping jacks": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "jumping rope",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "doing jumping jacks",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_PlayingGuitar_g01_c01_2c946596f69e_seg0000",
+      "video_id": "vid_v_PlayingGuitar_g01_c01_2c946596f69e",
+      "ground_truth": "playing guitar",
+      "ensemble_label": "playing acoustic guitar",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "playing acoustic guitar": 0.1064,
+        "playing guitar": 0.0998,
+        "singing and playing guitar": 0.1064
+      },
+      "raw_votes": {
+        "playing acoustic guitar": 1,
+        "playing guitar": 1,
+        "singing and playing guitar": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "playing acoustic guitar",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "singing and playing guitar",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "playing guitar",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_PushUps_g01_c01_21ab4ca295d6_seg0000",
+      "video_id": "vid_v_PushUps_g01_c01_21ab4ca295d6",
+      "ground_truth": "doing push-ups",
+      "ensemble_label": "doing push-ups",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "doing push-ups": 0.3126
+      },
+      "raw_votes": {
+        "doing push-ups": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "doing push-ups",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615_seg0000",
+      "video_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615",
+      "ground_truth": "juggling soccer ball",
+      "ensemble_label": "juggling soccer ball",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "juggling soccer ball": 0.3126
+      },
+      "raw_votes": {
+        "juggling soccer ball": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615_seg0001",
+      "video_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615",
+      "ground_truth": "juggling soccer ball",
+      "ensemble_label": "juggling soccer ball",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "juggling soccer ball": 0.3126
+      },
+      "raw_votes": {
+        "juggling soccer ball": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615_seg0002",
+      "video_id": "vid_v_SoccerJuggling_g01_c01_7dac5f58b615",
+      "ground_truth": "juggling soccer ball",
+      "ensemble_label": "juggling soccer ball",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "juggling soccer ball": 0.3126
+      },
+      "raw_votes": {
+        "juggling soccer ball": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "juggling soccer ball",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_TaiChi_g01_c01_d47fda467c56_seg0000",
+      "video_id": "vid_v_TaiChi_g01_c01_d47fda467c56",
+      "ground_truth": "performing tai chi",
+      "ensemble_label": "practicing tai chi",
+      "ensemble_similarity": 0.5,
+      "correct": true,
+      "weighted_votes": {
+        "practicing tai chi": 0.2129,
+        "tai chi": 0.0998
+      },
+      "raw_votes": {
+        "practicing tai chi": 2,
+        "tai chi": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "tai chi",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "doing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "doing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "practicing tai chi",
+          "similarity": 0.5,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_WritingOnBoard_g01_c01_b7f2cd45d37f_seg0000",
+      "video_id": "vid_v_WritingOnBoard_g01_c01_b7f2cd45d37f",
+      "ground_truth": "writing on board",
+      "ensemble_label": "writing on board",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "writing on board": 0.3126
+      },
+      "raw_votes": {
+        "writing on board": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_v_WritingOnBoard_g01_c02_329dcb6683cb_seg0000",
+      "video_id": "vid_v_WritingOnBoard_g01_c02_329dcb6683cb",
+      "ground_truth": "writing on board",
+      "ensemble_label": "writing on board",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "writing on board": 0.3126
+      },
+      "raw_votes": {
+        "writing on board": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "writing on board",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    }
+  ],
+  "best_single_model": "gemini-3-flash",
+  "best_single_accuracy": 1.0,
+  "improvement": 0.0,
+  "model_accuracies": {
+    "gemini-3-flash": 1.0,
+    "gemini-3.1-pro": 1.0,
+    "gpt-5.4": 1.0,
+    "gpt-5.4-mini": 1.0,
+    "grok-4.1-fast": 0.9375,
+    "llama-4-maverick": 1.0,
+    "qwen3.5-122b-a10b": 1.0,
+    "qwen3.5-27b": 1.0,
+    "qwen3.5-9b": 1.0,
+    "qwen3.5-vl": 1.0
+  },
+  "model_weights_used": {
+    "gemini-3-flash": 0.10643,
+    "gemini-3.1-pro": 0.099778,
+    "gpt-5.4": 0.099778,
+    "gpt-5.4-mini": 0.099778,
+    "grok-4.1-fast": 0.093126,
+    "llama-4-maverick": 0.10643,
+    "qwen3.5-122b-a10b": 0.099778,
+    "qwen3.5-27b": 0.099778,
+    "qwen3.5-9b": 0.095787,
+    "qwen3.5-vl": 0.099335
+  },
+  "top_k": 3
+}

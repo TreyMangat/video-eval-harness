@@ -18,6 +18,7 @@ export type RunsTableRow = {
   run_type?: "comparison" | "accuracy_test" | "benchmark" | null;
   has_accuracy?: boolean;
   has_dense?: boolean;
+  has_ensemble?: boolean;
   labeling_mode?: string | null;
   segment_count?: number | null;
   data_dir?: string;

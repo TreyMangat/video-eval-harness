@@ -1,4 +1,4 @@
-import type { RunListItem, RunPayload, SegmentMedia } from "./types";
+import type { EnsembleResult, RunListItem, RunPayload, SegmentMedia } from "./types";
 
 export type HealthPayload = {
   status: string;
@@ -497,6 +497,15 @@ export async function fetchRun(runId: string): Promise<RunPayload> {
     throw new Error(`Run ${runId} returned an invalid payload.`);
   }
   return payload;
+}
+
+export async function fetchEnsemble(runId: string): Promise<EnsembleResult> {
+  const response = await fetchWithTimeout(
+    buildApiUrl(`api/runs/${runId}/ensemble`),
+    { cache: "no-store" },
+    RUNS_TIMEOUT_MS
+  );
+  return readJson<EnsembleResult>(response);
 }
 
 export async function fetchSegmentMedia(

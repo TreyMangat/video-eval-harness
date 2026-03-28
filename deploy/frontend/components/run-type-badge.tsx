@@ -23,6 +23,7 @@ export function RunTypeBadge({
     <span className={wrapperClasses}>
       <span className={primaryBadgeClasses}>{getRunTypeLabel(runType)}</span>
       {isDenseRun(run) ? <span className="run-type-badge badge-dense">Dense</span> : null}
+      {run.has_ensemble ? <span className="run-type-badge badge-ensemble">Ensemble</span> : null}
     </span>
   );
 }

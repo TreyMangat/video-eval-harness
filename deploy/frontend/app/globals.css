@@ -1569,6 +1569,11 @@ textarea:focus {
   color: #7f77dd;
 }
 
+.badge-ensemble {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+}
+
 @media (prefers-color-scheme: dark) {
   .badge-accuracy {
     background: rgba(99, 153, 34, 0.2);
@@ -1584,6 +1589,10 @@ textarea:focus {
 
   .badge-dense {
     background: rgba(127, 119, 221, 0.2);
+  }
+
+  .badge-ensemble {
+    background: rgba(34, 197, 94, 0.22);
   }
 }
 
@@ -1928,6 +1937,41 @@ textarea:focus {
   margin: 12px 0 0;
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.ensemble-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ensemble-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+}
+
+.ensemble-delta-badge.positive {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+}
+
+.ensemble-delta-badge.negative {
+  background: rgba(248, 113, 113, 0.14);
+  color: #f87171;
+}
+
+.ensemble-delta-badge.neutral {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
 }
 
 .chart-stage {
@@ -2420,6 +2464,10 @@ textarea:focus {
   margin-bottom: 32px;
 }
 
+.ensemble-hero-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .accuracy-report-section {
   margin-bottom: 32px;
 }
@@ -2492,6 +2540,79 @@ textarea:focus {
 .consensus-summary-value {
   font-size: 13px;
   color: var(--color-text-primary, #f8fafc);
+}
+
+.ensemble-weights-section,
+.ensemble-details-card {
+  margin-bottom: 32px;
+}
+
+.ensemble-weight-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ensemble-weight-row {
+  display: grid;
+  gap: 8px;
+}
+
+.ensemble-weight-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ensemble-weight-model {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #f8fafc);
+}
+
+.ensemble-weight-value {
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary, var(--muted));
+}
+
+.ensemble-weight-track {
+  position: relative;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.ensemble-weight-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.ensemble-table tbody tr.ensemble-row-correct {
+  background: rgba(74, 222, 128, 0.05);
+}
+
+.ensemble-table tbody tr.ensemble-row-incorrect {
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.ensemble-correct-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ensemble-correct-badge.ok {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+}
+
+.ensemble-correct-badge.fail {
+  background: rgba(248, 113, 113, 0.14);
+  color: #f87171;
 }
 
 .model-label-card {

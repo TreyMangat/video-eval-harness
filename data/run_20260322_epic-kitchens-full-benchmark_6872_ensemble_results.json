@@ -1,0 +1,1328 @@
+{
+  "ensemble_accuracy": 0.8,
+  "ensemble_correct": 16,
+  "ensemble_total": 20,
+  "per_segment": [
+    {
+      "segment_id": "vid_P08_05_close_001_649493a94cb8_seg0000",
+      "video_id": "vid_P08_05_close_001_649493a94cb8",
+      "ground_truth": "closing water tap",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 0.0,
+      "correct": false,
+      "weighted_votes": {
+        "cutting in kitchen": 0.3604
+      },
+      "raw_votes": {
+        "cutting in kitchen": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4": {
+          "prediction": "washing vegetables",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "washing vegetables",
+          "similarity": 0.0,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_cut_001_3aa5a3be87d5_seg0000",
+      "video_id": "vid_P08_05_cut_001_3aa5a3be87d5",
+      "ground_truth": "cutting bell pepper",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 0.7,
+      "correct": true,
+      "weighted_votes": {
+        "cutting in kitchen": 0.3604
+      },
+      "raw_votes": {
+        "cutting in kitchen": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "cutting red pepper",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_mix_001_55a6cbcc1387_seg0000",
+      "video_id": "vid_P08_05_mix_001_55a6cbcc1387",
+      "ground_truth": "mixing corn",
+      "ensemble_label": "stirring food",
+      "ensemble_similarity": 0.7,
+      "correct": true,
+      "weighted_votes": {
+        "stirring food in pot": 0.1143,
+        "stirring food": 0.2462
+      },
+      "raw_votes": {
+        "stirring food in pot": 1,
+        "stirring food": 2
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "stirring food in pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "stirring food",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "stirring in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "stirring scrambled eggs",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cooking risotto",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "stirring food",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "stirring food",
+          "similarity": 0.7,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_open_001_44bef8af70e1_seg0000",
+      "video_id": "vid_P08_05_open_001_44bef8af70e1",
+      "ground_truth": "opening dishwasher",
+      "ensemble_label": "putting knife in dishwasher",
+      "ensemble_similarity": 0.0,
+      "correct": false,
+      "weighted_votes": {
+        "loading dishwasher": 0.1143,
+        "putting knife in dishwasher": 0.1231,
+        "putting vegetable in dishwasher": 0.1231
+      },
+      "raw_votes": {
+        "loading dishwasher": 1,
+        "putting knife in dishwasher": 1,
+        "putting vegetable in dishwasher": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "loading dishwasher",
+          "similarity": 0.333,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "putting knife in dishwasher",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4": {
+          "prediction": "opening dishwasher",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "opening dishwasher",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "putting knife in dishwasher",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "putting vegetable in dishwasher",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-27b": {
+          "prediction": "loading dishwasher",
+          "similarity": 0.333,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "loading dishwasher",
+          "similarity": 0.333,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_peel_001_56c242aa34aa_seg0000",
+      "video_id": "vid_P08_05_peel_001_56c242aa34aa",
+      "ground_truth": "peeling carrot",
+      "ensemble_label": "peeling carrot",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "peeling carrot": 0.3604
+      },
+      "raw_votes": {
+        "peeling carrot": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "peeling in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "peeling carrot",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_pour_001_cdca46303626_seg0000",
+      "video_id": "vid_P08_05_pour_001_cdca46303626",
+      "ground_truth": "pouring oil",
+      "ensemble_label": "pouring oil into pan",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "pouring oil into pan": 0.3604
+      },
+      "raw_votes": {
+        "pouring oil into pan": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "pouring oil",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "pouring oil",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "pouring oil into pan",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_put_001_5f3fd67227f7_seg0000",
+      "video_id": "vid_P08_05_put_001_5f3fd67227f7",
+      "ground_truth": "putting scissors away",
+      "ensemble_label": "putting away scissors",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "putting away scissors": 0.2374,
+        "putting scissors in drawer": 0.1231
+      },
+      "raw_votes": {
+        "putting away scissors": 2,
+        "putting scissors in drawer": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "putting away scissors",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "putting scissors in drawer",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "opening drawer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "opening kitchen drawer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "opening kitchen drawer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "opening kitchen drawer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "putting away scissors",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "putting scissors in drawer",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "putting scissors in drawer",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_take_001_c4a8bec1d4a5_seg0000",
+      "video_id": "vid_P08_05_take_001_c4a8bec1d4a5",
+      "ground_truth": "taking spoon",
+      "ensemble_label": "taking salsa with spoon",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "preparing food in kitchen": 0.1143,
+        "taking salsa with spoon": 0.1231,
+        "mixing ingredients": 0.1231
+      },
+      "raw_votes": {
+        "preparing food in kitchen": 1,
+        "taking salsa with spoon": 1,
+        "mixing ingredients": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "preparing food in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "taking salsa with spoon",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "mixing ingredients",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "stirring mixture",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "stirring ingredients",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "preparing food in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "mixing ingredients",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-27b": {
+          "prediction": "mixing ingredients",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-9b": {
+          "prediction": "mixing ingredients",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "mixing food",
+          "similarity": 0.0,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_turn-on_001_3685fc3a330c_seg0000",
+      "video_id": "vid_P08_05_turn-on_001_3685fc3a330c",
+      "ground_truth": "turning on tap",
+      "ensemble_label": "turning on tap",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "washing knife in sink": 0.1143,
+        "turning on tap": 0.1231,
+        "washing knife": 0.1231
+      },
+      "raw_votes": {
+        "washing knife in sink": 1,
+        "turning on tap": 1,
+        "washing knife": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "washing knife in sink",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "turning on tap",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "washing knife in sink",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-27b": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-9b": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "washing knife",
+          "similarity": 0.0,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P08_05_wash_001_17ee0da2a0a3_seg0000",
+      "video_id": "vid_P08_05_wash_001_17ee0da2a0a3",
+      "ground_truth": "washing hands",
+      "ensemble_label": "washing hands",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "washing hands in sink": 0.1143,
+        "washing hands": 0.2462
+      },
+      "raw_votes": {
+        "washing hands in sink": 1,
+        "washing hands": 2
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "washing hands in sink",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "washing hands",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "washing vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "washing hands",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "rinsing noodles",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "washing hands",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "washing hands",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "washing hands",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_close_002_5ca9aa6ff87c_seg0000",
+      "video_id": "vid_P22_07_close_002_5ca9aa6ff87c",
+      "ground_truth": "closing trash can",
+      "ensemble_label": "closing container",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "closing container": 0.2374,
+        "throwing away garbage": 0.1231
+      },
+      "raw_votes": {
+        "closing container": 2,
+        "throwing away garbage": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "closing container",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "throwing away garbage",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4": {
+          "prediction": "opening cooler",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "opening cabinet",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "removing tray from freezer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "removing outlet cover",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "closing container",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "opening cooler",
+          "similarity": 0.0,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_cut_002_2653f79a0448_seg0000",
+      "video_id": "vid_P22_07_cut_002_2653f79a0448",
+      "ground_truth": "cutting courgette",
+      "ensemble_label": "cutting in kitchen",
+      "ensemble_similarity": 0.7,
+      "correct": true,
+      "weighted_votes": {
+        "cutting in kitchen": 0.2374,
+        "cutting vegetables": 0.1231
+      },
+      "raw_votes": {
+        "cutting in kitchen": 2,
+        "cutting vegetables": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "cutting vegetables",
+          "similarity": 0.7,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_mix_002_28b863c500c7_seg0000",
+      "video_id": "vid_P22_07_mix_002_28b863c500c7",
+      "ground_truth": "mixing water",
+      "ensemble_label": "stirring pot",
+      "ensemble_similarity": 0.7,
+      "correct": true,
+      "weighted_votes": {
+        "stirring in pot": 0.1143,
+        "stirring pot": 0.2462
+      },
+      "raw_votes": {
+        "stirring in pot": 1,
+        "stirring pot": 2
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "stirring in pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "pouring into pot",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "stirring in pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "stirring pot",
+          "similarity": 0.7,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_open_002_9a62613970d0_seg0000",
+      "video_id": "vid_P22_07_open_002_9a62613970d0",
+      "ground_truth": "opening drawer",
+      "ensemble_label": "opening drawer",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "opening drawer": 0.3604
+      },
+      "raw_votes": {
+        "opening drawer": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "retrieving utensil from drawer",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "opening kitchen drawer",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "opening drawer",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_peel_002_db344dc32d10_seg0000",
+      "video_id": "vid_P22_07_peel_002_db344dc32d10",
+      "ground_truth": "peeling onion",
+      "ensemble_label": "peeling onion",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "peeling onion": 0.2374,
+        "peeling vegetable": 0.1231
+      },
+      "raw_votes": {
+        "peeling onion": 2,
+        "peeling vegetable": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "peeling onion",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "peeling onion",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "peeling onion",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "peeling onion",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "peeling vegetable",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "cutting in kitchen",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "peeling onion",
+          "similarity": 1.0,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_pour_002_03cbb12d6319_seg0000",
+      "video_id": "vid_P22_07_pour_002_03cbb12d6319",
+      "ground_truth": "pouring water",
+      "ensemble_label": "pouring water",
+      "ensemble_similarity": 1.0,
+      "correct": true,
+      "weighted_votes": {
+        "pouring water into pot": 0.1143,
+        "pouring water": 0.2462
+      },
+      "raw_votes": {
+        "pouring water into pot": 1,
+        "pouring water": 2
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "pouring water into pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "pouring water",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "pouring water",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "pouring liquid",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "pouring water into pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "pouring water into pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "pouring water",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "pouring water",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "pouring water",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "pouring water into pot",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_put_002_8b995240e9c6_seg0000",
+      "video_id": "vid_P22_07_put_002_8b995240e9c6",
+      "ground_truth": "putting salt",
+      "ensemble_label": "pouring salt",
+      "ensemble_similarity": 0.9,
+      "correct": true,
+      "weighted_votes": {
+        "seasoning food": 0.1143,
+        "pouring salt": 0.1231,
+        "adding salt to pot": 0.1231
+      },
+      "raw_votes": {
+        "seasoning food": 1,
+        "pouring salt": 1,
+        "adding salt to pot": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "seasoning food",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "pouring salt",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "seasoning food",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "seasoning food",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "adding ingredient to pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "pouring into pot",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "adding salt to pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "adding salt to pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-9b": {
+          "prediction": "adding salt to pot",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "adding salt to pot",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_take_002_f4dc0a7b58cc_seg0000",
+      "video_id": "vid_P22_07_take_002_f4dc0a7b58cc",
+      "ground_truth": "taking towel",
+      "ensemble_label": "washing dishes",
+      "ensemble_similarity": 0.0,
+      "correct": false,
+      "weighted_votes": {
+        "cleaning kitchen sink": 0.1143,
+        "washing dishes": 0.1231,
+        "grabbing towel": 0.1231
+      },
+      "raw_votes": {
+        "cleaning kitchen sink": 1,
+        "washing dishes": 1,
+        "grabbing towel": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "cleaning kitchen sink",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "washing dishes",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4": {
+          "prediction": "drying dishes",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "washing dishes",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "washing dishes",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "washing dishes",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "grabbing towel",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "grabbing cloth",
+          "similarity": 0.7,
+          "correct": true
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_turn-on_002_b8b824e7c51b_seg0000",
+      "video_id": "vid_P22_07_turn-on_002_b8b824e7c51b",
+      "ground_truth": "turning on tap",
+      "ensemble_label": "washing hands",
+      "ensemble_similarity": 0.0,
+      "correct": false,
+      "weighted_votes": {
+        "washing hands": 0.3604
+      },
+      "raw_votes": {
+        "washing hands": 3
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gemini-3.1-pro": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "gpt-5.4-mini": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "grok-4.1-fast": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "llama-4-maverick": {
+          "prediction": "fixing kitchen faucet",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-27b": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-9b": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        },
+        "qwen3.5-vl": {
+          "prediction": "washing hands",
+          "similarity": 0.0,
+          "correct": false
+        }
+      }
+    },
+    {
+      "segment_id": "vid_P22_07_wash_002_5d1f6f4da5d9_seg0000",
+      "video_id": "vid_P22_07_wash_002_5d1f6f4da5d9",
+      "ground_truth": "washing sponge",
+      "ensemble_label": "washing dishes",
+      "ensemble_similarity": 0.7,
+      "correct": true,
+      "weighted_votes": {
+        "washing dishes": 0.2374,
+        "washing sponge": 0.1231
+      },
+      "raw_votes": {
+        "washing dishes": 2,
+        "washing sponge": 1
+      },
+      "model_results": {
+        "gemini-3-flash": {
+          "prediction": "washing dishes",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gemini-3.1-pro": {
+          "prediction": "washing sponge",
+          "similarity": 1.0,
+          "correct": true
+        },
+        "gpt-5.4": {
+          "prediction": "washing dishes",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "gpt-5.4-mini": {
+          "prediction": "washing dishes",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "grok-4.1-fast": {
+          "prediction": "rinsing sponge",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "llama-4-maverick": {
+          "prediction": "washing dishes",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-122b-a10b": {
+          "prediction": "washing dishes",
+          "similarity": 0.7,
+          "correct": true
+        },
+        "qwen3.5-27b": {
+          "prediction": "rinsing sponge",
+          "similarity": 0.9,
+          "correct": true
+        },
+        "qwen3.5-vl": {
+          "prediction": "rinsing sponge",
+          "similarity": 0.9,
+          "correct": true
+        }
+      }
+    }
+  ],
+  "best_single_model": "gemini-3.1-pro",
+  "best_single_accuracy": 0.75,
+  "improvement": 0.05,
+  "model_accuracies": {
+    "gemini-3-flash": 0.65,
+    "gemini-3.1-pro": 0.75,
+    "gpt-5.4": 0.6,
+    "gpt-5.4-mini": 0.6,
+    "grok-4.1-fast": 0.4,
+    "llama-4-maverick": 0.5,
+    "qwen3.5-122b-a10b": 0.75,
+    "qwen3.5-27b": 0.6316,
+    "qwen3.5-9b": 0.7,
+    "qwen3.5-vl": 0.7222
+  },
+  "model_weights_used": {
+    "gemini-3-flash": 0.114287,
+    "gemini-3.1-pro": 0.123079,
+    "gpt-5.4": 0.105496,
+    "gpt-5.4-mini": 0.105496,
+    "grok-4.1-fast": 0.043957,
+    "llama-4-maverick": 0.079122,
+    "qwen3.5-122b-a10b": 0.123079,
+    "qwen3.5-27b": 0.09254,
+    "qwen3.5-9b": 0.105496,
+    "qwen3.5-vl": 0.107449
+  },
+  "top_k": 3
+}

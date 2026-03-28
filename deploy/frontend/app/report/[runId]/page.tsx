@@ -28,10 +28,11 @@ import {
   selectFeaturedVariant,
 } from "../../../lib/analysis";
 import { getRunType } from "../../../lib/run-type";
-import { loadRun } from "../../../lib/run-source";
+import { loadEnsemble, loadRun } from "../../../lib/run-source";
 import type {
   AccuracyMetric,
   ConsensusEntry,
+  EnsembleResult,
   GroundTruthEntry,
   LabelResult,
   RunPayload,
@@ -579,6 +580,204 @@ function HeroSummaryCard({
   );
 }
 
+function normalizePercentMetric(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.abs(value) > 1 ? value / 100 : value;
+}
+
+function formatSignedDelta(value: number | null | undefined): string {
+  const normalized = normalizePercentMetric(value);
+  if (normalized == null) {
+    return "0%";
+  }
+  const rounded = Math.round(Math.abs(normalized) * 100);
+  if (rounded === 0) {
+    return "0%";
+  }
+  return `${normalized > 0 ? "+" : "-"}${rounded}%`;
+}
+
+function improvementTone(value: number | null | undefined): "positive" | "negative" | "neutral" {
+  const normalized = normalizePercentMetric(value) ?? 0;
+  if (normalized > 0) {
+    return "positive";
+  }
+  if (normalized < 0) {
+    return "negative";
+  }
+  return "neutral";
+}
+
+function getResultDisplayLabel(result: LabelResult | null | undefined): string | null {
+  const actionLabel = getActionLabel(result);
+  if (actionLabel?.action?.trim()) {
+    return actionLabel.action.trim();
+  }
+  const primaryAction = result?.primary_action?.trim();
+  return primaryAction || null;
+}
+
+function ensembleWeightRows(ensemble: EnsembleResult): Array<{
+  model_name: string;
+  weight: number;
+  normalized_weight: number;
+}> {
+  const entries = Object.entries(ensemble.model_weights_used ?? {})
+    .filter(([, weight]) => typeof weight === "number" && Number.isFinite(weight) && weight >= 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  return entries.map(([model_name, weight]) => ({
+    model_name,
+    weight,
+    normalized_weight: total > 0 ? weight / total : 0,
+  }));
+}
+
+function EnsembleHeroCard({ ensemble }: { ensemble: EnsembleResult }) {
+  const ensembleAccuracy = normalizePercentMetric(ensemble.ensemble_accuracy);
+  const bestSingleAccuracy = normalizePercentMetric(ensemble.best_single_accuracy);
+  const tone = improvementTone(ensemble.improvement);
+  const accentColor =
+    tone === "positive" ? "#4ade80" : tone === "negative" ? "#f87171" : "#38bdf8";
+
+  return (
+    <article className="hero-card ensemble-hero-card" style={{ borderTopColor: accentColor }}>
+      <p className="hero-card-label">Ensemble</p>
+      <p className="hero-card-model" style={{ color: accentColor }}>
+        Weighted vote
+      </p>
+      <p className="hero-card-number">
+        {ensembleAccuracy != null ? formatPercent(ensembleAccuracy) : "—"} accuracy
+      </p>
+      <div className="ensemble-hero-meta">
+        <span className={`ensemble-delta-badge ${tone}`}>
+          {formatSignedDelta(ensemble.improvement)} vs best single model
+        </span>
+        <span className="hero-card-secondary">
+          Best single: {ensemble.best_single_model || "—"} at{" "}
+          {bestSingleAccuracy != null ? formatPercent(bestSingleAccuracy) : "—"}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function EnsembleWeightsSection({ ensemble }: { ensemble: EnsembleResult }) {
+  const rows = ensembleWeightRows(ensemble);
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="visual-card ensemble-weights-section">
+      <div className="section-heading">
+        <p className="section-eyebrow">Ensemble Weights</p>
+        <h2>How each model contributes</h2>
+        <p className="chart-desc">
+          Weights are normalized to sum to 100% so you can see which models drive the final
+          ensemble decision.
+        </p>
+      </div>
+      <div className="ensemble-weight-list">
+        {rows.map((row) => (
+          <div key={row.model_name} className="ensemble-weight-row">
+            <div className="ensemble-weight-meta">
+              <span className="ensemble-weight-model">{row.model_name}</span>
+              <span className="ensemble-weight-value">{formatPercent(row.normalized_weight)}</span>
+            </div>
+            <div className="ensemble-weight-track" aria-hidden="true">
+              <div
+                className="ensemble-weight-fill"
+                style={{
+                  width: `${Math.max(row.normalized_weight * 100, row.normalized_weight > 0 ? 4 : 0)}%`,
+                  backgroundColor: modelColor(row.model_name),
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EnsembleSegmentDetails({
+  ensemble,
+  segments,
+  results,
+}: {
+  ensemble: EnsembleResult;
+  segments: ReportSegment[];
+  results: LabelResult[];
+}) {
+  if (!Array.isArray(ensemble.per_segment) || ensemble.per_segment.length === 0) {
+    return null;
+  }
+
+  const segmentLookup = new Map(segments.map((segment) => [segment.segment_id, segment]));
+
+  return (
+    <details className="visual-card ensemble-details-card">
+      <summary className="sweep-summary">
+        <div>
+          <p className="section-eyebrow">Ensemble Audit</p>
+          <h3>Show segment details</h3>
+          <p>Compare the ensemble label against ground truth and the best single model.</p>
+        </div>
+      </summary>
+
+      <div className="table-scroll">
+        <table className="data-table ensemble-table">
+          <thead>
+            <tr>
+              <th>Segment</th>
+              <th>Ensemble Label</th>
+              <th>Ground Truth</th>
+              <th>Correct</th>
+              <th>Best Model Said</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ensemble.per_segment.map((entry) => {
+              const segment = segmentLookup.get(entry.segment_id);
+              const bestModelResult =
+                results.find(
+                  (result) =>
+                    result.segment_id === entry.segment_id &&
+                    result.model_name === ensemble.best_single_model
+                ) ?? null;
+              const bestModelLabel = getResultDisplayLabel(bestModelResult) ?? "—";
+              const segmentLabel = segment
+                ? `${segment.video_name} · ${formatTime(segment.start_s)} - ${formatTime(segment.end_s)}`
+                : entry.segment_id;
+
+              return (
+                <tr
+                  key={entry.segment_id}
+                  className={entry.correct ? "ensemble-row-correct" : "ensemble-row-incorrect"}
+                >
+                  <td>{segmentLabel}</td>
+                  <td>{entry.ensemble_label || "—"}</td>
+                  <td>{entry.ground_truth || "—"}</td>
+                  <td>
+                    <span className={`ensemble-correct-badge ${entry.correct ? "ok" : "fail"}`}>
+                      {entry.correct ? "Correct" : "Miss"}
+                    </span>
+                  </td>
+                  <td>{bestModelLabel}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 function topDenseLabelCounts(
   results: LabelResult[],
   field: "verb" | "noun"
@@ -603,11 +802,13 @@ function DenseReport({
   reportName,
   results,
   segments,
+  ensemble,
 }: {
   run: RunPayload;
   reportName: string;
   results: LabelResult[];
   segments: ReportSegment[];
+  ensemble: EnsembleResult | null;
 }) {
   const denseSegments = segments.length > 0 ? segments : getUniqueSegments(results);
   const models = [...new Set((results || []).map((result) => result.model_name).filter(Boolean))];
@@ -671,6 +872,17 @@ function DenseReport({
           </div>
         </div>
       </section>
+
+      {ensemble ? (
+        <section className="hero-grid report-hero-grid ensemble-hero-grid">
+          <EnsembleHeroCard ensemble={ensemble} />
+        </section>
+      ) : null}
+
+      {ensemble ? <EnsembleWeightsSection ensemble={ensemble} /> : null}
+      {ensemble ? (
+        <EnsembleSegmentDetails ensemble={ensemble} segments={denseSegments} results={results} />
+      ) : null}
 
       <section className="visual-card dense-segments-section">
         <div className="section-heading">
@@ -846,6 +1058,8 @@ export default async function RunReportPage({
     notFound();
   }
 
+  const ensemble = run.has_ensemble ? await loadEnsemble(runId, dataDir) : null;
+
   const sweepData = getSweepData(run);
   const models = Array.isArray(run.models) ? run.models : [];
   const segments = Array.isArray(run.segments) ? run.segments : [];
@@ -896,6 +1110,7 @@ export default async function RunReportPage({
           reportName={reportName}
           results={displayedResults}
           segments={allSegments}
+          ensemble={ensemble}
         />
       ) : (
         <>
@@ -929,6 +1144,7 @@ export default async function RunReportPage({
       </section>
 
       <section className="hero-grid report-hero-grid">
+        {ensemble ? <EnsembleHeroCard ensemble={ensemble} /> : null}
         {isAccuracyReport ? (
           <>
             <HeroSummaryCard
@@ -1011,6 +1227,15 @@ export default async function RunReportPage({
           </>
         )}
       </section>
+
+      {ensemble ? <EnsembleWeightsSection ensemble={ensemble} /> : null}
+      {ensemble ? (
+        <EnsembleSegmentDetails
+          ensemble={ensemble}
+          segments={allSegments}
+          results={displayedResults}
+        />
+      ) : null}
 
       <section className="visual-card all-segments-section">
         <div className="section-heading">

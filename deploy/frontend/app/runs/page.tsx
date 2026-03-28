@@ -58,16 +58,18 @@ function buildRunsTableRow(
     models?: string[] | null;
     video_ids?: string[] | null;
     run_type?: "comparison" | "accuracy_test" | "benchmark" | null | string;
+    has_ensemble?: boolean;
   },
   dataDir: string | undefined,
   options?: {
     bestAgreement?: number | null;
-    bestModelName?: string | null;
-    runType?: "comparison" | "accuracy_test" | "benchmark" | null | string;
-    hasAccuracy?: boolean;
-    hasDense?: boolean;
-    labelingMode?: string | null;
-    segmentCount?: number | null;
+     bestModelName?: string | null;
+     runType?: "comparison" | "accuracy_test" | "benchmark" | null | string;
+     hasAccuracy?: boolean;
+     hasDense?: boolean;
+     hasEnsemble?: boolean;
+     labelingMode?: string | null;
+     segmentCount?: number | null;
   }
 ): RunsTableRow {
   const models = safeStringArray(run.models);
@@ -89,6 +91,7 @@ function buildRunsTableRow(
           : null,
     has_accuracy: options?.hasAccuracy ?? false,
     has_dense: options?.hasDense ?? false,
+    has_ensemble: options?.hasEnsemble ?? Boolean(run.has_ensemble),
     labeling_mode: options?.labelingMode ?? null,
     segment_count: options?.segmentCount ?? null,
     data_dir: dataDir,
@@ -127,6 +130,7 @@ export default async function RunsPage({
                 (result) =>
                   result.action_label != null || result.labeling_mode === "dense"
               )),
+          hasEnsemble: payload?.has_ensemble ?? false,
           labelingMode:
             payload?.labeling_mode ??
             payload?.config?.labeling_mode ??

@@ -5,6 +5,7 @@ import type {
   AccuracyMetric,
   ConsensusEntry,
   ConsensusSummary,
+  EnsembleResult,
   FramePreview,
   GroundTruthEntry,
   LabelResult,
@@ -214,7 +215,7 @@ function coerceSweepSummary(value: unknown): SweepMetrics | null {
 
 async function findRunArtifact(
   runId: string,
-  extension: "csv" | "json" | "sweep-summary",
+  extension: "csv" | "json" | "sweep-summary" | "ensemble",
   dataDir?: string
 ): Promise<string | null> {
   const runsDir = await resolveRunsDir(dataDir);
@@ -232,10 +233,16 @@ async function findRunArtifact(
             path.join(runDir, "results.csv"),
             path.join(runsDir, `${runId}_results.csv`),
           ]
-        : [
+      : extension === "sweep-summary"
+        ? [
             path.join(runDir, `${runId}_sweep_summary.json`),
             path.join(runDir, "sweep_summary.json"),
             path.join(runsDir, `${runId}_sweep_summary.json`),
+          ]
+        : [
+            path.join(runDir, "ensemble_results.json"),
+            path.join(runDir, `${runId}_ensemble_results.json`),
+            path.join(runsDir, `${runId}_ensemble_results.json`),
           ];
 
   for (const candidate of candidates) {
@@ -548,6 +555,27 @@ async function loadSweepSummary(
   return coerceSweepSummary(raw);
 }
 
+export async function loadArtifactEnsemble(
+  runId: string,
+  dataDir?: string
+): Promise<EnsembleResult | null> {
+  const ensemblePath = await findRunArtifact(runId, "ensemble", dataDir);
+  if (!ensemblePath) {
+    return null;
+  }
+
+  try {
+    const raw = JSON.parse(await fs.readFile(ensemblePath, "utf-8")) as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return null;
+    }
+    return raw as EnsembleResult;
+  } catch (error) {
+    console.error(`Failed to load ensemble results for ${runId}:`, error);
+    return null;
+  }
+}
+
 async function loadRunType(
   runId: string,
   dataDir?: string
@@ -686,6 +714,7 @@ export async function listArtifactRuns(dataDir?: string): Promise<RunListItem[]>
           prompt_version: payload.config.prompt_version,
           video_ids: payload.config.video_ids,
           run_type: payload.run_type ?? null,
+          has_ensemble: payload.has_ensemble ?? false,
         };
       } catch (error) {
         console.error(`Skipping corrupt static run ${runId}:`, error);
@@ -714,6 +743,7 @@ export async function loadArtifactRun(
   const sweepSummary = await loadSweepSummary(runId, dataDir);
   const runType = await loadRunType(runId, dataDir);
   const groundTruth = runData.ground_truth ?? (await loadGroundTruth(runId, dataDir));
+  const ensemble = await loadArtifactEnsemble(runId, dataDir);
   const payload = buildRunPayload(
     runId,
     runData.results,
@@ -737,6 +767,7 @@ export async function loadArtifactRun(
     taxonomy_agreement: runData.taxonomy_agreement,
     consensus: runData.consensus,
     consensus_summary: runData.consensus_summary,
+    has_ensemble: ensemble != null,
   };
 }
 
