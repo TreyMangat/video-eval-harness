@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from .adapters import BuildAIAdapter, Ego4DAdapter, UCF101Adapter
     from .caching import ResponseCache
     from .config import AppSettings, BenchmarkConfig
-    from .storage import Storage
     from .sweep import SweepConfig, SweepOrchestrator
 
 app = typer.Typer(
@@ -43,6 +42,8 @@ DEFAULT_ARTIFACTS = Path("artifacts")
 
 
 def _setup(log_level: str = "INFO") -> None:
+    from dotenv import load_dotenv
+    load_dotenv()
     from .log import setup_logging
     setup_logging(log_level)
 
@@ -58,12 +59,12 @@ def ingest(
     from .adapters import DirectoryAdapter, LocalFileAdapter
     from .log import get_logger
     from .schemas import VideoMetadata
-    from .storage import Storage
+    from .storage_factory import create_storage
     from .utils.ffmpeg import probe_video
     from .utils.ids import generate_video_id
 
     logger = get_logger(__name__)
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     p = Path(path)
 
     if p.is_dir():
@@ -112,9 +113,9 @@ def segment(
     _setup(log_level)
     from .config import SegmentationConfig
     from .segmentation import FixedWindowSegmenter
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
 
     if video_id:
         videos = [storage.get_video(video_id)]
@@ -152,9 +153,9 @@ def extract_frames(
     _setup(log_level)
     from .config import ExtractionConfig
     from .extraction import FrameExtractor
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
 
     if video_id:
         videos = [storage.get_video(video_id)]
@@ -199,11 +200,11 @@ def label(
     from .labeling import LabelingRunner
     from .prompting import PromptBuilder
     from .schemas import RunConfig
-    from .storage import Storage
+    from .storage_factory import create_storage
     from .utils.ids import generate_run_id
 
     settings = get_settings()
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     cache = ResponseCache()
 
     # Load configs
@@ -332,12 +333,12 @@ def run_benchmark(
     _setup(log_level)
     from .caching import ResponseCache as _RC
     from .config import get_settings, load_benchmark_config, load_models_config, load_sweep_config
-    from .storage import Storage as _ST
+    from .storage_factory import create_storage
     from .sweep import SweepAxis
     from .sweep import SweepConfig as _SC
 
     settings = get_settings()
-    storage = _ST(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     cache = _RC()
 
     # Load config — sweep-aware or standard
@@ -466,7 +467,7 @@ def run_benchmark(
 
 def _ingest_videos(
     path: str,
-    storage: "Storage",
+    storage: object,
     probe_video,
     generate_video_id,
     VideoMetadata,
@@ -777,7 +778,7 @@ def _run_single(
     models_cfg: dict,
     path: str,
     settings: "AppSettings",
-    storage: "Storage",
+    storage: object,
     cache: "ResponseCache",
     prompt_version: Optional[str],
     window: Optional[float],
@@ -949,7 +950,7 @@ def _run_sweep(
     models_cfg: dict,
     path: str,
     settings: "AppSettings",
-    storage: "Storage",
+    storage: object,
     cache: "ResponseCache",
     prompt_version: Optional[str],
     window: Optional[float],
@@ -1165,9 +1166,9 @@ def evaluate(
     """
     _setup(log_level)
     from .evaluation.summaries import export_results, print_run_summary, print_sweep_summary
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     results = storage.get_run_results(run_id)
 
     if not results:
@@ -1235,11 +1236,11 @@ def sweep(
     _setup(log_level)
     from .caching import ResponseCache
     from .config import load_benchmark_config, load_models_config, get_settings
-    from .storage import Storage
+    from .storage_factory import create_storage
     from .sweep import SweepAxis, SweepConfig
 
     settings = get_settings()
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     cache = ResponseCache()
     models_cfg = load_models_config(models_file)
 
@@ -1300,7 +1301,7 @@ def test_suite(
 
     from .config import load_benchmark_config, load_models_config, get_settings
     from .caching import ResponseCache
-    from .storage import Storage
+    from .storage_factory import create_storage
     from .sweep import SweepAxis, SweepConfig
     from .utils.ffmpeg import probe_video
 
@@ -1385,7 +1386,7 @@ def test_suite(
     typer.confirm("\nProceed with test suite?", abort=True)
 
     # Run the sweep
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     cache = ResponseCache()
     axis = SweepAxis(num_frames=frames_list, methods=methods_list)
     sweep_cfg = SweepConfig(benchmark=bench_cfg, axis=axis)
@@ -1594,9 +1595,9 @@ def compare(
     """Compare two runs side-by-side: parse rate, latency, confidence, agreement, cost."""
     _setup(log_level)
     from .evaluation.metrics import compute_agreement_matrix, compute_model_summary
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     results_a = storage.get_run_results(run_a)
     results_b = storage.get_run_results(run_b)
 
@@ -1705,9 +1706,9 @@ def export(
     """Export run results to CSV/Parquet."""
     _setup(log_level)
     from .evaluation.summaries import export_results
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     results = storage.get_run_results(run_id)
 
     if not results:
@@ -1738,9 +1739,9 @@ def export_sweep_summary(
     from dataclasses import asdict
 
     from .evaluation.metrics import compute_sweep_metrics
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     results = storage.get_run_results(run_id)
 
     if not results:
@@ -1782,9 +1783,9 @@ def inspect_run(
 ) -> None:
     """Inspect run details or list all runs."""
     _setup(log_level)
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
 
     if run_id is None:
         runs = storage.list_runs()
@@ -1934,9 +1935,9 @@ def list_videos(
         return
 
     # Default: list from storage
-    from .storage import Storage
+    from .storage_factory import create_storage
 
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     videos = storage.list_videos()
 
     if not videos:
@@ -2082,9 +2083,8 @@ def accuracy_test(
 
     # Load configs and run the pipeline
     settings = get_settings()
-    storage_mod = __import__("video_eval_harness.storage", fromlist=["Storage"])
-    Storage = storage_mod.Storage
-    storage = Storage(artifacts_dir)
+    from video_eval_harness.storage_factory import create_storage as _cs
+    storage = _cs(artifacts_dir)
     cache = ResponseCache()
 
     bench_cfg = load_benchmark_config(config_file)
@@ -2156,7 +2156,7 @@ def optimize_prompts(
     from .providers.openrouter import OpenRouterProvider
     from .schemas import RunConfig, VideoMetadata
     from .segmentation import FixedWindowSegmenter
-    from .storage import Storage
+    from .storage_factory import create_storage
     from .utils.ffmpeg import probe_video
     from .utils.ids import generate_run_id, generate_video_id
 
@@ -2171,7 +2171,7 @@ def optimize_prompts(
     template_text = TEMPLATES[base_template]
 
     gt_labels = _load_ground_truth(ground_truth)
-    storage = Storage(artifacts_dir)
+    storage = create_storage(artifacts_dir)
     cache = ResponseCache()
     models_cfg = load_models_config(models_file)
 
@@ -2290,6 +2290,92 @@ def optimize_prompts(
     console.print(f"Results saved to: [cyan]{out_dir}[/cyan]")
 
     cache.close()
+
+
+@app.command()
+def mongodb_status(
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Check MongoDB connection and show collection counts."""
+    _setup(log_level)
+    import os
+
+    uri = os.environ.get("MONGODB_URI", "")
+    if not uri:
+        console.print("[yellow]MONGODB_URI not set. Using SQLite storage.[/yellow]")
+        raise typer.Exit(0)
+
+    from .mongo_storage import MongoStorage
+
+    try:
+        storage = MongoStorage(mongodb_uri=uri)
+        db = storage._db
+        console.print(f"[green]Connected to MongoDB[/green]: {db.name}")
+        for coll_name in ["videos", "segments", "extracted_frames", "label_results", "runs"]:
+            count = db[coll_name].count_documents({})
+            console.print(f"  {coll_name}: {count} documents")
+    except Exception as e:
+        console.print(f"[red]MongoDB connection failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def cleanup_junk_runs(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without deleting"),
+    force: bool = typer.Option(False, "--force", help="Skip confirmation prompt"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+) -> None:
+    """Delete junk/debug/test runs from MongoDB."""
+    _setup(log_level)
+    import os
+
+    from pymongo import MongoClient
+
+    from .cleanup import cleanup_junk_runs as _cleanup
+    from .cleanup import find_junk_runs
+
+    uri = os.environ.get("MONGODB_URI", "")
+    if not uri:
+        console.print("[yellow]MONGODB_URI not set. Nothing to clean up.[/yellow]")
+        raise typer.Exit(0)
+
+    client: MongoClient = MongoClient(uri)
+    db = client["vbench"]
+
+    junk = find_junk_runs(db)
+    if not junk:
+        console.print("[green]No junk runs found. Nothing to do.[/green]")
+        client.close()
+        return
+
+    if dry_run:
+        _cleanup(db, dry_run=True, log_fn=lambda msg: console.print(msg))
+        client.close()
+        return
+
+    # Preview
+    console.print(f"\nFound [yellow]{len(junk)}[/yellow] junk run(s) to delete:")
+    for run in junk:
+        run_id = run.get("_id") or run.get("run_id", "?")
+        display = run.get("display_name") or run.get("name") or run_id
+        label_count = db["label_results"].count_documents({"run_id": run_id})
+        console.print(f"  {run_id}  ({display})  — {label_count} label_results")
+
+    if not force:
+        answer = typer.prompt("\nProceed with deletion? [y/N]", default="N")
+        if answer.strip().lower() != "y":
+            console.print("Aborted.")
+            client.close()
+            return
+
+    result = _cleanup(db, dry_run=False, log_fn=lambda msg: console.print(msg))
+
+    console.print("\n[green]Final summary:[/green]")
+    console.print(f"  Runs deleted:          {result.runs_deleted}")
+    console.print(f"  Label results deleted: {result.label_results_deleted}")
+    console.print(f"  Orphans cleaned:       {result.orphans_cleaned}")
+
+    client.close()
 
 
 @app.command()
