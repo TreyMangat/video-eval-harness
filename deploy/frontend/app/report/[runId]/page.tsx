@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import {
@@ -41,6 +42,31 @@ import type {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ runId: string }>;
+}): Promise<Metadata> {
+  const { runId } = await params;
+  const run = await loadRun(runId);
+  if (!run) return { title: "Run not found" };
+
+  const reportName =
+    run.config.display_name?.trim() ||
+    displayRunName(run.run_id, run.config.created_at);
+  const modelCount = Object.keys(run.summaries ?? {}).length;
+  const videoCount = run.config.video_ids?.length ?? 0;
+
+  return {
+    title: reportName,
+    description: `VBench run: ${modelCount} models on ${videoCount} videos`,
+    openGraph: {
+      title: reportName,
+      description: `${modelCount} models · ${videoCount} videos`,
+    },
+  };
+}
 
 type AccuracyEntry = {
   model_name: string;

@@ -15,8 +15,25 @@ const monoFont = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VBench Public Dashboard",
-  description: "Public video segmentation and multi-model comparison dashboard.",
+  metadataBase: new URL("https://video-eval-harness-qu4m.vercel.app"),
+  title: {
+    default: "VBench — Multi-model video benchmark",
+    template: "%s | VBench",
+  },
+  description:
+    "Compare how 10 frontier vision-language models interpret the same video content. Agreement, accuracy, cost, and latency benchmarks.",
+  openGraph: {
+    title: "VBench — Multi-model video benchmark",
+    description:
+      "Compare how 10 frontier vision-language models interpret the same video content.",
+    type: "website",
+    siteName: "VBench",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "VBench",
+    description: "Multi-model video benchmark harness",
+  },
 };
 
 export default function RootLayout({
