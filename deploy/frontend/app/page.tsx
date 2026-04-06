@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { AggregateDashboard } from "../components/aggregate-dashboard";
+import { HomepageHero } from "../components/homepage-hero";
+import { FEATURED_RUN_ID } from "../lib/featured-run";
 import { listRuns, loadRun } from "../lib/run-source";
 import type { RunPayload } from "../lib/types";
 
@@ -60,11 +62,16 @@ export default async function HomePage({
     dataDir
   );
 
+  const featuredRun = await loadRun(FEATURED_RUN_ID, dataDir).catch(() => null);
+
   return (
-    <AggregateDashboard
-      runs={loadedRuns}
-      runList={runList}
-      dataDir={dataDir}
-    />
+    <>
+      {featuredRun ? <HomepageHero run={featuredRun} /> : null}
+      <AggregateDashboard
+        runs={loadedRuns}
+        runList={runList}
+        dataDir={dataDir}
+      />
+    </>
   );
 }

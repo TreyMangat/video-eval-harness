@@ -1974,6 +1974,167 @@ textarea:focus {
   color: #7dd3fc;
 }
 
+/* ─── Homepage Hero ─── */
+
+.homepage-hero {
+  width: min(1440px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 48px 0 0;
+}
+
+.homepage-hero-eyebrow {
+  margin: 0 0 16px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.homepage-hero-headline {
+  margin: 0 0 16px;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  max-width: 720px;
+}
+
+.homepage-hero-desc {
+  margin: 0 0 32px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 640px;
+}
+
+.homepage-hero-featured {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 12, 22, 0.96));
+  box-shadow: var(--shadow);
+}
+
+.homepage-hero-featured-label {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.homepage-hero-featured-meta {
+  margin: 0 0 20px;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.homepage-hero-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.homepage-hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  border-left: 4px solid var(--line);
+}
+
+.homepage-hero-card.winner {
+  border-left-color: var(--accent-2);
+}
+
+.homepage-hero-card.value {
+  border-left-color: #4c9aff;
+}
+
+.homepage-hero-card-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.homepage-hero-card.winner .homepage-hero-card-label {
+  color: var(--accent-2);
+}
+
+.homepage-hero-card.value .homepage-hero-card-label {
+  color: #4c9aff;
+}
+
+.homepage-hero-card-model {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.homepage-hero-card-stat {
+  font-size: 0.88rem;
+  color: var(--muted);
+  font-family: var(--font-mono), monospace;
+}
+
+.homepage-hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.homepage-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 150ms ease;
+}
+
+.homepage-hero-cta.primary {
+  background: var(--accent-2);
+  color: #000;
+}
+
+.homepage-hero-cta.primary:hover {
+  background: #16a34a;
+}
+
+.homepage-hero-cta.secondary {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.homepage-hero-cta.secondary:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+@media (max-width: 640px) {
+  .homepage-hero {
+    padding: 32px 0 0;
+  }
+
+  .homepage-hero-headline {
+    font-size: 1.6rem;
+  }
+
+  .homepage-hero-featured {
+    padding: 20px;
+  }
+
+  .homepage-hero-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chart-stage {
   min-height: 260px;
 }
