@@ -1,8 +1,101 @@
-# VBench — Video Model Benchmark Harness
+# VBench
+
+> **Multi-model video benchmark harness.** Compare how 10 frontier AI models interpret the same video content — agreement, accuracy, cost, and latency.
 
 [![CI](https://github.com/TreyMangat/video-eval-harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TreyMangat/video-eval-harness/actions/workflows/ci.yml)
 
-Compare how frontier vision-language models interpret the same video content. Drop in clips, pick models, see who agrees — and who doesn't.
+**[Live dashboard](https://video-eval-harness-qu4m.vercel.app)**
+
+![VBench dashboard](docs/screenshot-dashboard.png)
+
+## What this is
+
+I benchmarked 10 frontier vision-language models on real-world video clips to answer one question: **do frontier AI models actually agree on what's happening in a video, and which is worth paying for?**
+
+The harness feeds identical frames and prompts to every model in parallel, then measures:
+
+- **Agreement** — do models label the same action for the same segment?
+- **Accuracy** — fuzzy and exact match against ground-truth labels on UCF101 and EPIC-KITCHENS
+- **Cost** — per segment, per 1000 segments
+- **Latency** — end-to-end response time
+- **Stability** — how rankings shift when extraction parameters change
+
+## Key findings
+
+On 3 benchmark runs totaling 32 videos and 420+ model responses:
+
+**Gemini 3.1 Pro is the most consistent frontier model.** 94% fuzzy match on UCF101 (tied for top), 70% on EPIC-KITCHENS (outright winner). Highest exact-match rate on both benchmarks. Expensive on some runs, but it's the only model that holds up across easy and hard video types.
+
+**Rankings flip dramatically between easy and hard benchmarks.** Llama 4 Maverick ties for #1 on UCF101 at 100% fuzzy match — then collapses to 45% on EPIC-KITCHENS, the 2nd-worst result of any model tested. That's an overfitting signal: the model performs well on clean third-person action videos but falls apart on egocentric kitchen footage.
+
+**Qwen 3.5-9B is the best budget choice.** At $0.005 per run with 90% UCF101 and 60% EPIC-KITCHENS accuracy, it beats models that cost 20x more. If you're cost-sensitive and don't need peak accuracy, this is the pick.
+
+**Model agreement stays high but accuracy spreads.** On UCF101, accuracy is compressed between 88-100% and models broadly agree. On EPIC-KITCHENS, accuracy spreads from 25% (grok-4.1-fast) to 70% (gemini-3.1-pro / qwen3.5-122b) and agreement drops. Models agree on easy cases and disagree on hard ones.
+
+**Exact-match is the more discriminating metric.** On UCF101 fuzzy match, 6 models tie at 94%. On exact-match, only `gemini-3-flash` and `gemini-3.1-pro` hit 88%. When you need to pick a model on easy data, look at exact-match, not fuzzy.
+
+### UCF101 Full Benchmark
+
+10 models, 12 videos, 16 segments, $0.91 total cost.
+
+| Model | Fuzzy match | Exact match | Cost | Latency |
+|-------|------------|------------|------|---------|
+| llama-4-maverick | 100% | 81% | $0.010 | 6.3s |
+| gemini-3-flash | 100% | 88% | $0.081 | 3.2s |
+| gpt-5.4-mini | 94% | 62% | $0.025 | 1.1s |
+| qwen3.5-27b | 94% | 81% | $0.050 | 19.6s |
+| qwen3.5-122b-a10b | 94% | 81% | $0.066 | 12.0s |
+| gpt-5.4 | 94% | 81% | $0.094 | 3.2s |
+| gemini-3.1-pro | 94% | 88% | $0.459 | 15.4s |
+| qwen3.5-vl | 93% | 80% | $0.109 | 23.7s |
+| qwen3.5-9b | 90% | 70% | $0.005 | 12.5s |
+| grok-4.1-fast | 88% | 75% | $0.012 | 4.4s |
+
+### EPIC-KITCHENS Full Benchmark
+
+10 models, 20 videos, 20 segments, $0.33 total cost.
+
+| Model | Fuzzy match | Exact match | Cost | Latency |
+|-------|------------|------------|------|---------|
+| gemini-3.1-pro | 70% | 35% | $0.031 | 15.1s |
+| qwen3.5-122b-a10b | 70% | 20% | $0.186 | 21.0s |
+| gemini-3-flash | 65% | 15% | — | — |
+| qwen3.5-vl | 61% | 22% | $0.057 | 26.4s |
+| gpt-5.4 | 60% | 20% | — | — |
+| gpt-5.4-mini | 60% | 30% | — | — |
+| qwen3.5-9b | 60% | 40% | $0.013 | 16.4s |
+| qwen3.5-27b | 53% | 16% | $0.017 | 51.8s |
+| llama-4-maverick | 45% | 10% | — | — |
+| grok-4.1-fast | 25% | 0% | $0.021 | 10.2s |
+
+See the [methodology](docs/methodology.md) for how these numbers are computed, or explore the [live dashboard](https://video-eval-harness-qu4m.vercel.app) to see every model response per segment.
+
+## Featured runs
+
+- [UCF101 Full Benchmark](https://video-eval-harness-qu4m.vercel.app/report/run_20260322_ucf101-full-benchmark_95e2) — 10 models, 12 videos, 16 segments, $0.91 total cost
+- [EPIC-KITCHENS Full Benchmark](https://video-eval-harness-qu4m.vercel.app/report/run_20260322_epic-kitchens-full-benchmark_6872) — 10 models, 20 videos, 20 segments, $0.33 total cost
+- [UCF101 Fast Models](https://video-eval-harness-qu4m.vercel.app/report/run_20260323_ucf101-fast-models_acb2) — 4 fast models, same UCF101 videos
+
+## Architecture overview
+
+```
+Video → Ingest → Segment → Extract frames → Label (N models in parallel) → Evaluate → Export
+                                                ↓
+                                    OpenRouter / OpenAI / Gemini
+```
+
+- **Backend:** Python 3.12, Typer CLI, FastAPI, concurrent model labeling via ThreadPoolExecutor
+- **Storage:** MongoDB Atlas for metadata, filesystem for frames/videos, diskcache for response cache
+- **Inference:** OpenRouter as the primary provider (10 models via one key), with native OpenAI and Gemini provider fallbacks
+- **API:** FastAPI deployed on Modal with autoscaling serverless containers
+- **Frontend:** Next.js 15 + React 19 + Recharts, deployed on Vercel with dynamic Open Graph images per run
+- **Tests:** 135+ pytest tests, ruff for linting, GitHub Actions CI
+
+~9,400 lines of Python + ~15,400 lines of TypeScript.
+
+See [`docs/architecture.md`](docs/architecture.md) for a detailed breakdown.
+
+---
 
 ## Quick start
 
@@ -173,7 +266,9 @@ src/video_eval_harness/
 ├── config.py               # YAML config loading, Pydantic settings
 ├── schemas.py              # Core data models
 ├── sweep.py                # Multi-config extraction sweep orchestrator
-├── storage.py              # SQLite storage + artifact directory
+├── storage.py              # SQLite storage (local fallback)
+├── mongo_storage.py        # MongoDB storage (production)
+├── storage_factory.py      # Auto-selects storage backend
 ├── caching.py              # Disk-based response cache
 ├── log.py                  # Rich-powered logging
 ├── viewer.py               # Streamlit result viewer
@@ -214,10 +309,10 @@ src/video_eval_harness/
 pip install -e ".[dev]"
 
 # Tests
-py -3.12 -m pytest -q             # 117 tests
+python3 -m pytest -q             # 135+ tests
 
 # Lint
-py -3.12 -m ruff check src/ tests/
+python3 -m ruff check src/ tests/
 
 # Streamlit viewer
 streamlit run src/video_eval_harness/viewer.py
